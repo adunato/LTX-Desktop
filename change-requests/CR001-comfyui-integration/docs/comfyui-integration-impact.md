@@ -54,13 +54,29 @@ This approach is workflow-agnostic and relies on embedding UI mapping rules dire
     *   **Weaker Typing:** Relies on dynamic dictionaries passing through the backend, requiring careful validation logic.
     *   **Complex JSON Maintenance:** The burden of defining the UI shifts to whoever authors the ComfyUI JSON workflows; they must correctly set up the `proxyWidgets` arrays.
 
+### Option C: Direct Electron-to-ComfyUI Integration (The Comfy-LTX-Desktop Approach)
+
+This approach bypasses the Python backend entirely, shifting all ComfyUI communication (HTTP REST + WebSockets) directly into the Electron main process.
+
+*   **Mechanism:**
+    *   The local FastAPI Python backend is completely removed.
+    *   The Electron layer implements a hardcoded "Template Patching" pattern. It loads a static exported workflow JSON (e.g., relying on a specific `RSLTXVGenerate` custom node) and manually overrides specific JSON keys before submitting it to a locally running ComfyUI instance.
+*   **Pros:**
+    *   **Less architectural layers:** Removes the Python intermediate layer, making the app purely Node/Electron talking to ComfyUI.
+*   **Cons:**
+    *   **Destructive:** Completely removes the native local generation capability.
+    *   **High Fork Divergence:** Deleting the backend and ripping out existing Electron IPCs guarantees massive merge conflicts with upstream Lightricks updates.
+    *   **Inflexible:** Hardcoding JSON patch logic ties the implementation to a single, specific workflow template and custom node suite.
+
 ---
 
 ## 4. Architectural Impact on LTX-Desktop Backend (Option B Selected)
 
-Following review, **Option B (Proxy-Based Metadata Mapping)** has been selected. The primary directive for this integration is to **maximize out-of-the-box compatibility** while ensuring a **minimal fork update impact**. 
+Following review of the available reference architectures, **Option B (Proxy-Based Metadata Mapping)** has been selected. The primary directive for this integration is to **maximize out-of-the-box compatibility** while ensuring a **minimal fork update impact**. 
 
-Crucially, the ComfyUI integration must be added *on top* of existing services. Current LTX Desktop functionality (local, native GPU generation) must be fully retained and operate exactly as before when ComfyUI is not active. By isolating the new ComfyUI logic, we ensure that upstream merges from the original `LTX-Desktop` repository remain trivial.
+Crucially, the ComfyUI integration must be added *on top* of existing services. Current LTX Desktop functionality (local, native GPU generation) must be fully retained and operate exactly as before when ComfyUI is not active. 
+
+By isolating the new ComfyUI logic within the existing Python backend (Option B), we avoid the destructive nature of Option C (which deletes the backend and breaks upstream merging) and the inflexibility of Option A (which strictly requires custom nodes). This ensures that upstream merges from the original `LTX-Desktop` repository remain trivial.
 
 ### 4.1. Core Principle: Isolation for Minimal Merge Conflicts
 To minimize merge conflicts when pulling from the upstream fork, the ComfyUI integration will avoid heavily modifying existing core files (like `app_handler.py` or complex state machines) wherever possible. Instead, it will rely on new interface implementations and isolated modules.
