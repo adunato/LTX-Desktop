@@ -941,8 +941,56 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
           {activeTab === 'inference' && (
             <>
-              {/* Fast Model Settings */}
+              {/* Generation Backend Selection */}
               <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-blue-400" />
+                  <h3 className="text-sm font-semibold text-white">Generation Backend</h3>
+                </div>
+
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Choose between the built-in local engine and an external ComfyUI server.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      settings.generationBackend === 'local'
+                        ? 'bg-blue-500/10 border-blue-500'
+                        : 'bg-zinc-800/50 border-transparent hover:border-zinc-700'
+                    }`}
+                    onClick={() => onSettingsChange({ ...settings, generationBackend: 'local' })}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className={`h-4 w-4 ${settings.generationBackend === 'local' ? 'text-blue-400' : 'text-zinc-500'}`} />
+                      <span className={`text-sm font-medium ${settings.generationBackend === 'local' ? 'text-white' : 'text-zinc-400'}`}>
+                        Local Engine
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-500">Standard LTX-Desktop pipelines</p>
+                  </div>
+
+                  <div
+                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      settings.generationBackend === 'comfyui'
+                        ? 'bg-blue-500/10 border-blue-500'
+                        : 'bg-zinc-800/50 border-transparent hover:border-zinc-700'
+                    }`}
+                    onClick={() => onSettingsChange({ ...settings, generationBackend: 'comfyui' })}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sliders className={`h-4 w-4 ${settings.generationBackend === 'comfyui' ? 'text-blue-400' : 'text-zinc-500'}`} />
+                      <span className={`text-sm font-medium ${settings.generationBackend === 'comfyui' ? 'text-white' : 'text-zinc-400'}`}>
+                        ComfyUI
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-500">Custom node-based workflows</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fast Model Settings */}
+              <div className="space-y-4 pt-4 border-t border-zinc-800">
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4 text-green-400" />
                   <h3 className="text-sm font-semibold text-white">Fast Model (Distilled)</h3>

@@ -26,6 +26,7 @@ import { logger } from '../lib/logger'
 import { RetakePanel } from '../components/RetakePanel'
 import { ICLoraPanel, CONDITIONING_TYPES } from '../components/ICLoraPanel'
 import { FreeApiKeyBubble } from '../components/FreeApiKeyBubble'
+import { ComfyUIWorkflowSelector, type ComfyUIWorkflow } from '../components/ComfyUIWorkflowSelector'
 
 // Asset card with hover overlays
 function AssetCard({
@@ -340,6 +341,11 @@ function PromptBar({
   onIcLoraCondTypeChange,
   icLoraStrength,
   onIcLoraStrengthChange,
+  generationBackend,
+  selectedWorkflow,
+  onWorkflowSelect,
+  workflowParams,
+  onWorkflowParamChange,
 }: {
   mode: 'image' | 'video' | 'retake' | 'ic-lora'
   onModeChange: (mode: 'image' | 'video' | 'retake' | 'ic-lora') => void
@@ -371,6 +377,11 @@ function PromptBar({
   onIcLoraCondTypeChange?: (type: ICLoraConditioningType) => void
   icLoraStrength?: number
   onIcLoraStrengthChange?: (strength: number) => void
+  generationBackend: 'local' | 'comfyui'
+  selectedWorkflow: ComfyUIWorkflow | null
+  onWorkflowSelect: (w: ComfyUIWorkflow) => void
+  workflowParams: Record<string, any>
+  onWorkflowParamChange: (key: string, value: any) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
@@ -378,6 +389,7 @@ function PromptBar({
   const [isAudioDragOver, setIsAudioDragOver] = useState(false)
   const isRetake = mode === 'retake'
   const isIcLora = mode === 'ic-lora'
+  const isComfyUI = generationBackend === 'comfyui'
   const LOCAL_MAX_DURATION: Record<string, number> = { '540p': 20, '720p': 10, '1080p': 5 }
   const localMaxDuration = LOCAL_MAX_DURATION[settings.videoResolution] ?? 20
   const videoDurationOptions = shouldVideoGenerateWithLtxApi
@@ -620,145 +632,189 @@ function PromptBar({
           </>
         ) : mode === 'image' ? (
           <>
-            {/* Model indicator */}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50">
-              <ZitIcon className="h-3.5 w-3.5" />
-              <span className="text-zinc-300 font-medium">Z-Image Turbo</span>
-            </div>
+            {/* Backend/Workflow Selector */}
+            {isComfyUI ? (
+              <div className="flex items-center gap-2">
+                <ComfyUIWorkflowSelector
+                  selectedWorkflowId={selectedWorkflow?.id || null}
+                  onWorkflowSelect={onWorkflowSelect}
+                />
+                {/* Dynamic Widgets for ComfyUI */}
+                {selectedWorkflow && (
+                  <div className="flex items-center gap-2 overflow-x-auto max-w-[300px] no-scrollbar">
+                    {Object.entries(selectedWorkflow.proxyWidgets).map(([key, _widget]) => {
+                      if (key === 'prompt') return null // Handled by main textarea
+                      return (
+                        <div key={key} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/50 shrink-0">
+                          <span className="text-[10px] text-zinc-500 uppercase font-bold">{key}</span>
+                          <input
+                            type="text"
+                            value={workflowParams[key] ?? ''}
+                            onChange={(e) => onWorkflowParamChange(key, e.target.value)}
+                            placeholder="Auto"
+                            className="bg-transparent text-zinc-300 text-xs focus:outline-none w-12"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50">
+                <ZitIcon className="h-3.5 w-3.5" />
+                <span className="text-zinc-300 font-medium">Z-Image Turbo</span>
+              </div>
+            )}
             
             {/* Resolution dropdown */}
-            <SettingsDropdown
-              title="IMAGE RESOLUTION"
-              value={settings.imageResolution}
-              onChange={(v) => onSettingsChange({ ...settings, imageResolution: v })}
-              options={[
-                { value: '1080p', label: '1080p' },
-                { value: '1440p', label: '1440p' },
-                { value: '2048p', label: '2048p' },
-              ]}
-              trigger={
-                <>
-                  <Monitor className="h-3.5 w-3.5" />
-                  <span>{settings.imageResolution.replace('p', '')}</span>
-                </>
-              }
-            />
-            
-            {/* Aspect ratio dropdown */}
-            <SettingsDropdown
-              title="RATIO"
-              value={settings.aspectRatio}
-              onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
-              options={[
-                { value: '16:9', label: '16:9' },
-                { value: '1:1', label: '1:1' },
-                { value: '9:16', label: '9:16' },
-              ]}
-              trigger={
-                <>
-                  <AspectIcon className="h-3.5 w-3.5" />
-                  <span>{settings.aspectRatio}</span>
-                </>
-              }
-            />
-            
-          </>
-        ) : (
-          <>
-            <SettingsDropdown
-              title="MODEL"
-              value={settings.model}
-              onChange={(v) => onSettingsChange({ ...settings, model: v })}
-              options={
-                shouldVideoGenerateWithLtxApi
-                  ? [
-                      { value: 'fast', label: 'LTX-2.3 Fast (API)', disabled: !!inputAudio, tooltip: inputAudio ? 'Fast model is not available for Audio-to-Video' : undefined },
-                      { value: 'pro', label: 'LTX-2.3 Pro (API)' },
-                    ]
-                  : [
-                      { value: 'fast', label: 'LTX 2.3 Fast' },
-                    ]
-              }
-              trigger={
-                <>
-                  <LightricksIcon className="h-3.5 w-3.5" />
-                  <span className="text-zinc-300 font-medium">
-                    {shouldVideoGenerateWithLtxApi
-                      ? (settings.model === 'pro' ? 'LTX-2.3 Pro (API)' : 'LTX-2.3 Fast (API)')
-                      : 'LTX 2.3 Fast'}
-                  </span>
-                </>
-              }
-            />
-
-            <div className="w-px h-4 bg-zinc-700 mx-0.5" />
-            
-            {/* Duration dropdown */}
-            <SettingsDropdown
-              title="DURATION"
-              value={String(settings.duration)}
-              onChange={(v) => onSettingsChange({ ...settings, duration: parseFloat(v) })}
-              options={videoDurationOptions.map((value) => ({ value: String(value), label: `${value} Sec` }))}
-              trigger={
-                <>
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>{settings.duration}s</span>
-                </>
-              }
-            />
-            
-            {/* Resolution dropdown */}
-            <SettingsDropdown
-              title="RESOLUTION"
-              value={settings.videoResolution}
-              onChange={(v) => {
-                const maxDur = LOCAL_MAX_DURATION[v] ?? 20
-                const clampedDuration = settings.duration > maxDur ? maxDur : settings.duration
-                onSettingsChange({ ...settings, videoResolution: v, duration: clampedDuration })
-              }}
-              options={videoResolutionOptions.map((value) => ({ value, label: value }))}
-              trigger={
-                <>
-                  <Monitor className="h-3.5 w-3.5" />
-                  <span>{settings.videoResolution.replace('p', '')}</span>
-                </>
-              }
-            />
-
-            {shouldVideoGenerateWithLtxApi && (
+            {!isComfyUI && (
               <SettingsDropdown
-                title="FPS"
-                value={String(settings.fps)}
-                onChange={(v) => onSettingsChange({ ...settings, fps: parseInt(v) })}
-                options={videoFpsOptions.map((value) => ({ value: String(value), label: `${value}` }))}
+                title="IMAGE RESOLUTION"
+                value={settings.imageResolution}
+                onChange={(v) => onSettingsChange({ ...settings, imageResolution: v })}
+                options={[
+                  { value: '1080p', label: '1080p' },
+                  { value: '1440p', label: '1440p' },
+                  { value: '2048p', label: '2048p' },
+                ]}
                 trigger={
                   <>
-                    <Film className="h-3.5 w-3.5" />
-                    <span>{settings.fps} FPS</span>
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span>{settings.imageResolution.replace('p', '')}</span>
                   </>
                 }
               />
             )}
             
-            {/* Aspect Ratio dropdown */}
-            <SettingsDropdown
-              title="ASPECT RATIO"
-              value={settings.aspectRatio}
-              onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
-              options={inputAudio
-                ? [{ value: '16:9', label: '16:9' }]
-                : [
-                    { value: '16:9', label: '16:9' },
-                    { value: '9:16', label: '9:16' },
-                  ]
-              }
-              trigger={
-                <>
-                  <AspectIcon className="h-3.5 w-3.5" />
-                  <span>{settings.aspectRatio}</span>
-                </>
-              }
-            />
+            {/* Aspect ratio dropdown */}
+            {!isComfyUI && (
+              <SettingsDropdown
+                title="RATIO"
+                value={settings.aspectRatio}
+                onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
+                options={[
+                  { value: '16:9', label: '16:9' },
+                  { value: '1:1', label: '1:1' },
+                  { value: '9:16', label: '9:16' },
+                ]}
+                trigger={
+                  <>
+                    <AspectIcon className="h-3.5 w-3.5" />
+                    <span>{settings.aspectRatio}</span>
+                  </>
+                }
+              />
+            )}
+            
+          </>
+        ) : (
+          <>
+            {isComfyUI ? (
+              <ComfyUIWorkflowSelector
+                selectedWorkflowId={selectedWorkflow?.id || null}
+                onWorkflowSelect={onWorkflowSelect}
+              />
+            ) : (
+              <SettingsDropdown
+                title="MODEL"
+                value={settings.model}
+                onChange={(v) => onSettingsChange({ ...settings, model: v })}
+                options={
+                  shouldVideoGenerateWithLtxApi
+                    ? [
+                        { value: 'fast', label: 'LTX-2.3 Fast (API)', disabled: !!inputAudio, tooltip: inputAudio ? 'Fast model is not available for Audio-to-Video' : undefined },
+                        { value: 'pro', label: 'LTX-2.3 Pro (API)' },
+                      ]
+                    : [
+                        { value: 'fast', label: 'LTX 2.3 Fast' },
+                      ]
+                }
+                trigger={
+                  <>
+                    <LightricksIcon className="h-3.5 w-3.5" />
+                    <span className="text-zinc-300 font-medium">
+                      {shouldVideoGenerateWithLtxApi
+                        ? (settings.model === 'pro' ? 'LTX-2.3 Pro (API)' : 'LTX-2.3 Fast (API)')
+                        : 'LTX 2.3 Fast'}
+                    </span>
+                  </>
+                }
+              />
+            )}
+
+            {!isComfyUI && (
+              <>
+                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
+                
+                {/* Duration dropdown */}
+                <SettingsDropdown
+                  title="DURATION"
+                  value={String(settings.duration)}
+                  onChange={(v) => onSettingsChange({ ...settings, duration: parseFloat(v) })}
+                  options={videoDurationOptions.map((value) => ({ value: String(value), label: `${value} Sec` }))}
+                  trigger={
+                    <>
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>{settings.duration}s</span>
+                    </>
+                  }
+                />
+                
+                {/* Resolution dropdown */}
+                <SettingsDropdown
+                  title="RESOLUTION"
+                  value={settings.videoResolution}
+                  onChange={(v) => {
+                    const maxDur = LOCAL_MAX_DURATION[v] ?? 20
+                    const clampedDuration = settings.duration > maxDur ? maxDur : settings.duration
+                    onSettingsChange({ ...settings, videoResolution: v, duration: clampedDuration })
+                  }}
+                  options={videoResolutionOptions.map((value) => ({ value, label: value }))}
+                  trigger={
+                    <>
+                      <Monitor className="h-3.5 w-3.5" />
+                      <span>{settings.videoResolution.replace('p', '')}</span>
+                    </>
+                  }
+                />
+
+                {shouldVideoGenerateWithLtxApi && (
+                  <SettingsDropdown
+                    title="FPS"
+                    value={String(settings.fps)}
+                    onChange={(v) => onSettingsChange({ ...settings, fps: parseInt(v) })}
+                    options={videoFpsOptions.map((value) => ({ value: String(value), label: `${value}` }))}
+                    trigger={
+                      <>
+                        <Film className="h-3.5 w-3.5" />
+                        <span>{settings.fps} FPS</span>
+                      </>
+                    }
+                  />
+                )}
+                
+                {/* Aspect Ratio dropdown */}
+                <SettingsDropdown
+                  title="ASPECT RATIO"
+                  value={settings.aspectRatio}
+                  onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
+                  options={inputAudio
+                    ? [{ value: '16:9', label: '16:9' }]
+                    : [
+                        { value: '16:9', label: '16:9' },
+                        { value: '9:16', label: '9:16' },
+                      ]
+                  }
+                  trigger={
+                    <>
+                      <AspectIcon className="h-3.5 w-3.5" />
+                      <span>{settings.aspectRatio}</span>
+                    </>
+                  }
+                />
+              </>
+            )}
             
           </>
         )}
@@ -962,6 +1018,9 @@ export function GenSpace() {
     videoUrl: string | null
     videoPath: string | null
   }>({ videoUrl: null, videoPath: null })
+
+  const [comfyUIWorkflow, setComfyUIWorkflow] = useState<ComfyUIWorkflow | null>(null)
+  const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({})
 
   const {
     submitIcLora,
@@ -1340,7 +1399,8 @@ export function GenSpace() {
           imageAspectRatio: settings.aspectRatio,
           imageSteps: 4,
           variations: settings.variations,
-        }
+        },
+        appSettings.generationBackend === 'comfyui' ? workflowParams : undefined
       )
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
@@ -1667,6 +1727,16 @@ export function GenSpace() {
           onIcLoraCondTypeChange={setIcLoraCondType}
           icLoraStrength={icLoraStrength}
           onIcLoraStrengthChange={setIcLoraStrength}
+          generationBackend={appSettings.generationBackend}
+          selectedWorkflow={comfyUIWorkflow}
+          onWorkflowSelect={(w) => {
+            setComfyUIWorkflow(w)
+            setWorkflowParams({}) // Reset params when workflow changes
+          }}
+          workflowParams={workflowParams}
+          onWorkflowParamChange={(key, value) => {
+            setWorkflowParams(prev => ({ ...prev, [key]: value }))
+          }}
         />
       </div>
       
