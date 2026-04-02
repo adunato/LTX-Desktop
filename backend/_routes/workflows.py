@@ -8,13 +8,13 @@ from services.comfyui.workflow_parser import (
     WORKFLOWS_DIR
 )
 
-router = APIRouter(tags=["workflows"])
+router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
-@router.get("/api/workflows")
+@router.get("")
 def list_workflows() -> list[dict[str, Any]]:
     return get_available_workflows()
 
-@router.post("/api/workflows/import")
+@router.post("/import")
 async def upload_workflow(
     file: UploadFile = File(...),
     name: str | None = Form(None)
@@ -37,7 +37,7 @@ async def upload_workflow(
         if temp_path.exists():
             os.remove(temp_path)
 
-@router.post("/api/workflows/{workflow_id}/config")
+@router.post("/{workflow_id}/config")
 def update_config(
     workflow_id: str,
     config: dict[str, Any] = Body(...)

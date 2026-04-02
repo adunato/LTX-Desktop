@@ -30,12 +30,18 @@ from state import init_state_service
 if TYPE_CHECKING:
     from handlers.app_handler import AppHandler
 
-_FALLBACK = "An unexpected error occurred"
+DEFAULT_ALLOWED_ORIGINS: list[str] = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 
 def create_app(
-    handler: AppHandler,
-    title: str = "LTX Backend",
+    *,
+    handler: "AppHandler",
+    allowed_origins: list[str] | None = None,
+    title: str = "LTX-2 Video Generation Server",
+    auth_token: str = "",
     admin_token: str = "",
 ) -> FastAPI:
     """Create a configured FastAPI app bound to the provided handler."""
@@ -44,14 +50,46 @@ def create_app(
     app = FastAPI(title=title)
     app.state.admin_token = admin_token  # type: ignore[attr-defined]
 
-    # CORS configuration
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=allowed_origins or DEFAULT_ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _auth_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[StarletteResponse]],
+    ) -> StarletteResponse:
+        if not auth_token:
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        def _token_matches(candidate: str) -> bool:
+            return hmac.compare_digest(candidate, auth_token)
+
+        # WebSocket: check query param
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            if _token_matches(request.query_params.get("token", "")):
+                return await call_next(request)
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+        # HTTP: Bearer or Basic auth
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer ") and _token_matches(auth_header[7:]):
+            return await call_next(request)
+        if auth_header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_header[6:]).decode()
+                _, _, password = decoded.partition(":")
+                if _token_matches(password):
+                    return await call_next(request)
+            except Exception:
+                pass
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     @app.middleware("http")
     async def admin_token_middleware(
@@ -62,11 +100,13 @@ def create_app(
             if not auth_header or not auth_header.startswith("Bearer "):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
-                token = auth_header.split(" ", 1)[1]
+            token = auth_header.split(" ", 1)[1]
             if not hmac.compare_digest(token, admin_token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
         return await call_next(request)
+
+    _FALLBACK = "An unexpected error occurred"
 
     async def _validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": str(exc) or _FALLBACK})
