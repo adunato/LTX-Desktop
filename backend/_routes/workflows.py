@@ -9,7 +9,7 @@ from services.comfyui.workflow_parser import (
 )
 from pathlib import Path
 
-router = APIRouter(prefix="/workflows", tags=["workflows"])
+router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 @router.get("")
 def list_workflows() -> list[dict[str, Any]]:

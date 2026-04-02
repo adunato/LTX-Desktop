@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Settings, Loader2, Upload } from 'lucide-react'
+import { Plus, Settings, Loader2, Upload, AlertCircle } from 'lucide-react'
 import { Button } from './ui/button'
 import { backendFetch } from '../lib/backend'
 import { ComfyUIMappingModal } from './ComfyUIMappingModal'
@@ -24,17 +24,22 @@ export function ComfyUIWorkflowManager() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<ComfyUIWorkflow | null>(null)
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchWorkflows = async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await backendFetch('/api/workflows')
       if (res.ok) {
         const data = await res.json()
         setWorkflows(data)
+      } else {
+        setError('Failed to load workflows from server.')
       }
     } catch (e) {
       console.error('Failed to fetch workflows', e)
+      setError('Connection error while fetching workflows.')
     } finally {
       setLoading(false)
     }
@@ -53,6 +58,7 @@ export function ComfyUIWorkflowManager() {
       if (!file) return
 
       setIsImporting(true)
+      setError(null)
       const formData = new FormData()
       formData.append('file', file)
       
@@ -63,9 +69,17 @@ export function ComfyUIWorkflowManager() {
         })
         if (res.ok) {
           await fetchWorkflows()
+        } else {
+          try {
+            const data = await res.json()
+            setError(data.error || 'Import failed. Check if the file is a valid ComfyUI JSON.')
+          } catch {
+            setError('Import failed. Server returned an error.')
+          }
         }
       } catch (e) {
         console.error('Import failed', e)
+        setError('Connection error during import.')
       } finally {
         setIsImporting(false)
       }
@@ -106,6 +120,13 @@ export function ComfyUIWorkflowManager() {
           Import JSON
         </Button>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
