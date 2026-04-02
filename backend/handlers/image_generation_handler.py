@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-import copy
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from _routes._errors import HTTPError
 from api_types import GenerateImageRequest, GenerateImageResponse
@@ -214,117 +213,53 @@ class ImageGenerationHandler(StateHandlerBase):
         num_images: int,
         workflow_params: dict[str, Any] | None,
     ) -> GenerateImageResponse:
-        from services.comfyui.comfyui_client import ComfyUIClient
-        from services.comfyui.workflow_parser import get_workflow, get_available_workflows
+        from services.comfyui.image_pipeline import ComfyUIImagePipeline
 
         generation_id = uuid.uuid4().hex[:8]
-        output_paths: list[Path] = []
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        client = ComfyUIClient(base_url=self.state.app_settings.comfyui_url)
+        output_paths: list[str] = []
+        
+        pipeline = ComfyUIImagePipeline(
+            workflow_id=workflow_id,
+            comfyui_url=self.state.app_settings.comfyui_url,
+            outputs_dir=self.config.outputs_dir
+        )
 
         try:
             self._generation.start_api_generation(generation_id)
             self._generation.update_progress("validating_request", 5, None, None)
             
-            # Find the workflow and its ui_mapping
-            all_workflows: list[dict[str, Any]] = get_available_workflows()
-            wf_meta = next((w for w in all_workflows if w["id"] == workflow_id), None)
-            if not wf_meta:
-                raise HTTPError(404, f"ComfyUI workflow '{workflow_id}' not found or has no valid ui_mapping.")
-
-            ui_mapping: dict[str, dict[str, str]] = wf_meta.get("ui_mapping", {})
-            required_fields = ["prompt", "seed", "width", "height", "num_inference_steps"]
-            for field in required_fields:
-                if field not in ui_mapping:
-                    raise HTTPError(400, f"Workflow '{workflow_id}' is missing required UI mapping for: {field}")
-
-            # Load the full graph JSON
-            graph_data = get_workflow(workflow_id)
-            if not graph_data:
-                raise HTTPError(404, f"Could not load workflow JSON for '{workflow_id}'.")
-
-            # Convert Graph format to API format (flat dict keyed by string node ID)
-            api_workflow: dict[str, Any] = {}
-            nodes = graph_data.get("nodes", [])
-            for node in nodes:
-                node_id = str(node["id"])
-                api_workflow[node_id] = {
-                    "class_type": node["type"],
-                    "inputs": node.get("inputs", {})
-                }
-
             for idx in range(num_images):
                 if self._generation.is_generation_cancelled():
                     raise RuntimeError("Generation was cancelled")
 
-                # Copy the base API workflow for patching
-                current_workflow: dict[str, Any] = copy.deepcopy(api_workflow)
+                result = pipeline.generate(
+                    prompt=prompt,
+                    height=height,
+                    width=width,
+                    guidance_scale=8.0,
+                    num_inference_steps=num_inference_steps,
+                    seed=seed + idx,
+                    workflow_params=workflow_params,
+                    progress_callback=lambda phase, prog: self._generation.update_progress(phase, prog, idx, num_images),
+                    is_cancelled=self._generation.is_generation_cancelled
+                )
                 
-                def set_input(ltx_key: str, value: Any) -> None:
-                    mapping = ui_mapping[ltx_key]
-                    node_id = str(mapping["node"])
-                    field = mapping["field"]
-                    if node_id in current_workflow:
-                        current_workflow[node_id]["inputs"][field] = value
-                    else:
-                        logger.warning(f"Target node {node_id} not found in workflow {workflow_id}")
-
-                try:
-                    set_input("prompt", prompt)
-                    set_input("seed", seed + idx)
-                    set_input("width", width)
-                    set_input("height", height)
-                    set_input("num_inference_steps", num_inference_steps)
-                    
-                    if "guidance_scale" in ui_mapping:
-                        set_input("guidance_scale", 8.0) # Standard default
-
-                    # Apply optional overrides from workflow_params if present
-                    if workflow_params:
-                        for key, val in workflow_params.items():
-                            if key in ui_mapping:
-                                set_input(key, val)
-
-                except Exception as e:
-                    raise HTTPError(500, f"Error patching workflow JSON: {e}")
-
-                self._generation.update_progress("inference", 15 + int((idx / num_images) * 60), None, None)
-                prompt_res = client.prompt(current_workflow)
-                prompt_id = prompt_res.get("prompt_id")
-                if not prompt_id:
-                    raise RuntimeError("ComfyUI did not return a prompt_id")
-                
-                outputs: dict[str, Any] = {}
-                while True:
-                    if self._generation.is_generation_cancelled():
-                        # TODO: Call ComfyUI cancel API
-                        raise RuntimeError("Generation was cancelled")
-                    history = client.get_history(prompt_id)
-                    if prompt_id in history:
-                        outputs = history[prompt_id].get("outputs", {})
-                        break
-                    time.sleep(1)
-
-                self._generation.update_progress("downloading_output", 75 + int(((idx + 1) / num_images) * 20), None, None)
-                for _node_id, node_output in outputs.items():
-                    if "images" in node_output:
-                        for img_meta in node_output["images"]:
-                            image_bytes = client.view_image(img_meta["filename"], img_meta.get("subfolder", ""), img_meta.get("type", ""))
-                            output_path = self.config.outputs_dir / f"comfyui_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
-                            output_path.write_bytes(image_bytes)
-                            output_paths.append(output_path)
+                # Get paths from the compatible result object
+                if hasattr(result, "image_paths"):
+                    output_paths.extend(cast(Any, result).image_paths)
 
             self._generation.update_progress("complete", 100, None, None)
-            self._generation.complete_generation([str(path) for path in output_paths])
-            return GenerateImageResponse(status="complete", image_paths=[str(path) for path in output_paths])
-        except HTTPError as e:
-            self._generation.fail_generation(e.detail)
-            raise
+            self._generation.complete_generation(output_paths)
+            return GenerateImageResponse(status="complete", image_paths=output_paths)
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 for path in output_paths:
-                    path.unlink(missing_ok=True)
+                    Path(path).unlink(missing_ok=True)
                 logger.info("Image generation cancelled by user")
                 return GenerateImageResponse(status="cancelled")
+            
+            # Rethrow as HTTPError if it was already one
+            if isinstance(e, HTTPError):
+                raise
             raise HTTPError(500, str(e)) from e
