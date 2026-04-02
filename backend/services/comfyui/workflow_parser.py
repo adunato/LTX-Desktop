@@ -72,28 +72,60 @@ def get_available_workflows() -> list[dict[str, Any]]:
             # Default pipeline assignment if not in config
             pipeline = config.get("pipeline", "image_gen")
             
-            # 1. Start with automapping from proxyWidgets
+            # 1. Start with automapping from proxyWidgets (Graph Format)
             ui_mapping: dict[str, dict[str, str]] = {}
+            all_inputs = []
+            
             nodes = data.get("nodes", [])
             if isinstance(nodes, list):
+                # Graph Format
                 for node in nodes:
                     if not isinstance(node, dict):
                         continue
+                    node_id = str(node.get("id", ""))
+                    node_type = str(node.get("type", "Unknown"))
+                    
+                    # Discovery
                     properties = node.get("properties")
-                    if not isinstance(properties, dict):
+                    if isinstance(properties, dict):
+                        proxy_widgets = properties.get("proxyWidgets")
+                        if isinstance(proxy_widgets, list):
+                            for proxy in proxy_widgets:
+                                if isinstance(proxy, list) and len(proxy) >= 2:
+                                    target_node_id = str(proxy[0])
+                                    target_widget_name = str(proxy[1])
+                                    ltx_key = _resolve_ltx_key(target_widget_name)
+                                    if ltx_key:
+                                        ui_mapping[ltx_key] = {
+                                            "node": target_node_id,
+                                            "field": target_widget_name
+                                        }
+                    
+                    # Extract all inputs for manual mapping
+                    inputs = node.get("inputs", {})
+                    if isinstance(inputs, dict):
+                        for field_name in inputs.keys():
+                            all_inputs.append({
+                                "id": f"{node_id}:{field_name}",
+                                "label": f"[{node_id}] {node_type} -> {field_name}",
+                                "node": node_id,
+                                "field": field_name
+                            })
+            else:
+                # API Format (flat dict keyed by node ID)
+                for node_id, node in data.items():
+                    if not isinstance(node, dict):
                         continue
-                    proxy_widgets = properties.get("proxyWidgets")
-                    if isinstance(proxy_widgets, list):
-                        for proxy in proxy_widgets:
-                            if isinstance(proxy, list) and len(proxy) >= 2:
-                                target_node_id = str(proxy[0])
-                                target_widget_name = str(proxy[1])
-                                ltx_key = _resolve_ltx_key(target_widget_name)
-                                if ltx_key:
-                                    ui_mapping[ltx_key] = {
-                                        "node": target_node_id,
-                                        "field": target_widget_name
-                                    }
+                    node_type = node.get("class_type", "Unknown")
+                    inputs = node.get("inputs", {})
+                    if isinstance(inputs, dict):
+                        for field_name in inputs.keys():
+                            all_inputs.append({
+                                "id": f"{node_id}:{field_name}",
+                                "label": f"[{node_id}] {node_type} -> {field_name}",
+                                "node": node_id,
+                                "field": field_name
+                            })
 
             # 2. Layer on user manual overrides from config
             user_mapping = config.get("ui_mapping", {})
@@ -105,24 +137,6 @@ def get_available_workflows() -> list[dict[str, Any]]:
             required = PIPELINE_REQUIRED_KEYS.get(pipeline, [])
             is_healthy = all(key in ui_mapping for key in required)
             
-            # 4. Extract all available node inputs for the manual mapping dropdowns
-            all_inputs = []
-            if isinstance(nodes, list):
-                for node in nodes:
-                    if not isinstance(node, dict):
-                        continue
-                    node_id = str(node.get("id", ""))
-                    node_type = str(node.get("type", "Unknown"))
-                    inputs = node.get("inputs", {})
-                    if isinstance(inputs, dict):
-                        for field_name in inputs.keys():
-                            all_inputs.append({
-                                "id": f"{node_id}:{field_name}",
-                                "label": f"[{node_id}] {node_type} -> {field_name}",
-                                "node": node_id,
-                                "field": field_name
-                            })
-
             workflows.append({
                 "id": workflow_id,
                 "name": str(data.get("name", workflow_id)),
