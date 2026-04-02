@@ -34,7 +34,9 @@ export interface ProxyWidget {
 export interface ComfyUIWorkflow {
   id: string
   name: string
+  pipeline: string
   ui_mapping: Record<string, ProxyWidget>
+  is_healthy: boolean
 }
 
 // Asset card with hover overlays
@@ -615,7 +617,9 @@ function PromptBar({
               onChange={(v) => onWorkflowSelect(v === 'native' ? null : v)}
               options={[
                 { value: 'native', label: 'Z-Image Turbo', icon: <ZitIcon className="h-3.5 w-3.5" /> },
-                ...comfyWorkflows.map(w => ({ value: w.id, label: w.name, icon: <Sliders className="h-3.5 w-3.5 text-blue-400" /> }))
+                ...comfyWorkflows
+                  .filter(w => w.pipeline === 'image_gen' && w.is_healthy)
+                  .map(w => ({ value: w.id, label: w.name, icon: <Sliders className="h-3.5 w-3.5 text-blue-400" /> }))
               ]}
               trigger={
                 <>

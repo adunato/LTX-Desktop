@@ -6,6 +6,8 @@ import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
 
+import { ComfyUIWorkflowManager } from './ComfyUIWorkflowManager'
+
 interface TextEncoderStatus {
   downloaded: boolean
   size_gb: number
@@ -18,7 +20,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'apiKeys' | 'inference' | 'comfyWorkflows' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
@@ -268,6 +270,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     { id: 'general' as TabId, label: 'General', icon: Settings },
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'inference' as TabId, label: 'Inference', icon: Sliders },
+    { id: 'comfyWorkflows' as TabId, label: 'ComfyUI Workflows', icon: Sliders },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
@@ -1066,6 +1069,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </p>
               </div>
             </>
+          )}
+
+          {activeTab === 'comfyWorkflows' && (
+            <ComfyUIWorkflowManager />
           )}
 
           {activeTab === 'promptEnhancer' && (

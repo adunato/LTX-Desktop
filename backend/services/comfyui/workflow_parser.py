@@ -1,5 +1,6 @@
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,6 +22,15 @@ STANDARD_LTX_KEYS = {
     "video_path": ["video", "input_video", "video_path"],
     "mask_path": ["mask", "input_mask", "mask_path"],
     "audio_path": ["audio", "input_audio", "audio_path"],
+    "start_time": ["start_time", "trim_start"],
+    "end_time": ["end_time", "trim_end"],
+}
+
+PIPELINE_REQUIRED_KEYS = {
+    "image_gen": ["prompt", "seed", "height", "width", "num_inference_steps"],
+    "video_gen": ["prompt", "seed", "height", "width", "num_frames", "frame_rate"],
+    "retake": ["video_path", "mask_path", "prompt", "seed", "start_time", "end_time"],
+    "ic_lora": ["prompt", "seed", "height", "width", "num_frames", "frame_rate"],
 }
 
 def _resolve_ltx_key(widget_name: Any) -> str | None:
@@ -32,20 +42,38 @@ def _resolve_ltx_key(widget_name: Any) -> str | None:
             return ltx_key
     return None
 
+def _get_workflow_config(workflow_id: str) -> dict[str, Any]:
+    config_path = WORKFLOWS_DIR / f"{workflow_id}.config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return cast(dict[str, Any], json.load(f))
+        except Exception:
+            pass
+    return {}
+
 def get_available_workflows() -> list[dict[str, Any]]:
     workflows: list[dict[str, Any]] = []
     if not WORKFLOWS_DIR.exists():
+        WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
         return workflows
         
     for file_path in WORKFLOWS_DIR.glob("*.json"):
+        if file_path.name.endswith(".config.json"):
+            continue
+            
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data: dict[str, Any] = json.load(f)
             
             workflow_id = file_path.stem
-            ui_mapping: dict[str, dict[str, str]] = {}
+            config = _get_workflow_config(workflow_id)
             
-            # Introspect nodes for proxyWidgets (The Vlo Approach)
+            # Default pipeline assignment if not in config
+            pipeline = config.get("pipeline", "image_gen")
+            
+            # 1. Start with automapping from proxyWidgets
+            ui_mapping: dict[str, dict[str, str]] = {}
             nodes = data.get("nodes", [])
             if isinstance(nodes, list):
                 for node in nodes:
@@ -58,12 +86,8 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     if isinstance(proxy_widgets, list):
                         for proxy in proxy_widgets:
                             if isinstance(proxy, list) and len(proxy) >= 2:
-                                # Cast to Any first then to expected types to force pyright to stop complaining
-                                p_any: Any = proxy
-                                target_node_id: str = str(p_any[0])
-                                target_widget_name: str = str(p_any[1])
-                                
-                                # Try to match to standard LTX keys
+                                target_node_id = str(proxy[0])
+                                target_widget_name = str(proxy[1])
                                 ltx_key = _resolve_ltx_key(target_widget_name)
                                 if ltx_key:
                                     ui_mapping[ltx_key] = {
@@ -71,19 +95,76 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                         "field": target_widget_name
                                     }
 
-            if ui_mapping:
-                workflows.append({
-                    "id": workflow_id,
-                    "name": str(data.get("name", workflow_id)),
-                    "ui_mapping": ui_mapping
-                })
-            else:
-                logger.warning(f"Workflow {workflow_id} has no valid ui_mapping via proxyWidgets")
+            # 2. Layer on user manual overrides from config
+            user_mapping = config.get("ui_mapping", {})
+            for key, val in user_mapping.items():
+                if isinstance(val, dict) and "node" in val and "field" in val:
+                    ui_mapping[key] = val
+
+            # 3. Calculate Health (LED)
+            required = PIPELINE_REQUIRED_KEYS.get(pipeline, [])
+            is_healthy = all(key in ui_mapping for key in required)
+            
+            # 4. Extract all available node inputs for the manual mapping dropdowns
+            all_inputs = []
+            if isinstance(nodes, list):
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    node_id = str(node.get("id", ""))
+                    node_type = str(node.get("type", "Unknown"))
+                    inputs = node.get("inputs", {})
+                    if isinstance(inputs, dict):
+                        for field_name in inputs.keys():
+                            all_inputs.append({
+                                "id": f"{node_id}:{field_name}",
+                                "label": f"[{node_id}] {node_type} -> {field_name}",
+                                "node": node_id,
+                                "field": field_name
+                            })
+
+            workflows.append({
+                "id": workflow_id,
+                "name": str(data.get("name", workflow_id)),
+                "pipeline": pipeline,
+                "ui_mapping": ui_mapping,
+                "is_healthy": is_healthy,
+                "all_inputs": all_inputs
+            })
                 
         except Exception as e:
             logger.error(f"Failed to parse workflow {file_path}: {e}")
             
     return workflows
+
+def save_workflow_config(workflow_id: str, config: dict[str, Any]) -> None:
+    config_path = WORKFLOWS_DIR / f"{workflow_id}.config.json"
+    existing = _get_workflow_config(workflow_id)
+    existing.update(config)
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(existing, f, indent=2)
+
+def import_workflow(file_path: Path, name: str | None = None) -> str:
+    if not file_path.exists():
+        raise ValueError("File does not exist")
+    
+    workflow_id = file_path.stem
+    target_path = WORKFLOWS_DIR / file_path.name
+    
+    # Copy file to workflows directory
+    shutil.copy(file_path, target_path)
+    
+    if name:
+        try:
+            with open(target_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["name"] = name
+            with open(target_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
+            
+    return workflow_id
 
 def get_workflow(workflow_id: str) -> dict[str, Any] | None:
     file_path = WORKFLOWS_DIR / f"{workflow_id}.json"
