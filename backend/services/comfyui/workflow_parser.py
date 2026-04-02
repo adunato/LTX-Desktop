@@ -84,6 +84,7 @@ def get_available_workflows() -> list[dict[str, Any]]:
                         continue
                     node_id = str(node.get("id", ""))
                     node_type = str(node.get("type", "Unknown"))
+                    node_title = str(node.get("title", node_type))
                     
                     # Discovery
                     properties = node.get("properties")
@@ -105,9 +106,13 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name in inputs.keys():
+                            label = f"[{node_id}] {node_title} -> {field_name}"
+                            if node_title != node_type:
+                                label = f"[{node_id}] {node_title} ({node_type}) -> {field_name}"
+                                
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
-                                "label": f"[{node_id}] {node_type} -> {field_name}",
+                                "label": label,
                                 "node": node_id,
                                 "field": field_name
                             })
@@ -117,12 +122,19 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     if not isinstance(node, dict):
                         continue
                     node_type = node.get("class_type", "Unknown")
+                    meta = node.get("_meta", {})
+                    node_title = meta.get("title", node_type)
+                    
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name in inputs.keys():
+                            label = f"[{node_id}] {node_title} -> {field_name}"
+                            if node_title != node_type:
+                                label = f"[{node_id}] {node_title} ({node_type}) -> {field_name}"
+
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
-                                "label": f"[{node_id}] {node_type} -> {field_name}",
+                                "label": label,
                                 "node": node_id,
                                 "field": field_name
                             })
