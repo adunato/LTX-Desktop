@@ -46,14 +46,23 @@ To ensure the frontend requires zero changes to its progress tracking logic:
 *   The `ComfyUIPipelineAdapter` will spawn a background polling task (using the existing `TaskRunner`).
 *   This task will translate ComfyUI's native execution progress into the exact `GenerationProgress` (e.g., `GenerationRunning`, `GenerationComplete`) state objects expected by `AppState`.
 
-## 3. Supported Generation Use Cases (Workflow Mapping)
+### 2.6. Model and Workflow Selection
+
+To support the ComfyUI integration natively alongside local generation, the UI will be updated to introduce a **Model / Workflow Selection** concept. 
+*   Users will be able to select their desired model or ComfyUI workflow for each generation mode.
+*   This selection exists in addition to the native LTX-Desktop models.
+*   When a ComfyUI workflow is selected, the UI dynamically loads the required `proxyWidgets` (parameters) specific to that workflow, overriding or supplementing the default parameter fields.
+
+## 3. Supported Generation Use Cases (Functional Journeys)
 
 To ensure the ComfyUI integration has full feature parity with the local backend, we must map all existing generation capabilities to corresponding ComfyUI JSON workflows. 
-Rather than a direct 1:1 mapping of backend API payloads, workflows are designed functionally: separating user-facing parameters from the technical pipeline mechanics handled internally by ComfyUI.
+Rather than a direct 1:1 mapping of backend API payloads, workflows are designed functionally: grouped by user journeys and separating user-facing parameters from the technical pipeline mechanics handled internally by ComfyUI.
 
 Each workflow will need its own `proxyWidgets` metadata definition so the frontend can dynamically map user inputs to the specific ComfyUI nodes within that workflow graph.
 
-### 3.1. Fast Video Generation (`video_generation.json`)
+### 3.1. Journey: Generate Videos
+
+**Fast Video Generation (`video_generation.json`)**
 Maps to the `FastVideoPipeline` interface.
 *   **User Goal**: Create a new video clip from scratch, guided by text or starting from an initial image.
 *   **Input Assets**: `images` (Optional list of initial/reference images).
@@ -61,31 +70,7 @@ Maps to the `FastVideoPipeline` interface.
 *   **Technical Parameters (Handled in ComfyUI)**: VAE Encoding/Decoding, latent dimension calculations, noise scheduling.
 *   **Output**: Saved video file (`output_path`).
 
-### 3.2. Image Generation (`image_generation.json`)
-Maps to the `ImageGenerationPipeline` interface.
-*   **User Goal**: Generate a single image from a text description.
-*   **Input Assets**: None.
-*   **User Parameters**: `prompt`, `seed`, `height`, `width`, `guidance_scale`.
-*   **Technical Parameters (Handled in ComfyUI)**: VAE decoding, sampler configurations, `num_inference_steps`.
-*   **Output**: Generated image array (`ImagePipelineOutputLike`).
-
-### 3.3. Retake / Inpainting (`retake.json`)
-Maps to the `RetakePipeline` interface.
-*   **User Goal**: Fix a specific section of an existing video or fill a gap on the timeline.
-*   **Input Assets**: `video_path` (Original video), internally generated mask data.
-*   **User Parameters**: `prompt`, `negative_prompt`, `seed`, `start_time`, `end_time`, `enhance_prompt`, `regenerate_video`, `regenerate_audio`.
-*   **Technical Parameters (Handled in ComfyUI)**: Video frame extraction, mask tensor generation, latent blending, multi-modal guider parameters, distillation flags, `num_inference_steps`.
-*   **Output**: Modified video file (`output_path`).
-
-### 3.4. IC-LoRA Generation (`ic_lora.json`)
-Maps to the `IcLoraPipeline` interface.
-*   **User Goal**: Generate video with strong adherence to character/style using Image-Conditioned LoRA.
-*   **Input Assets**: `images` (Reference images for conditioning), `video_conditioning` (Timing/strength mapping).
-*   **User Parameters**: `prompt`, `seed`, `height`, `width`, `num_frames`, `frame_rate`.
-*   **Technical Parameters (Handled in ComfyUI)**: LoRA loading, attention injection, prompt embedding overrides.
-*   **Output**: Saved video file (`output_path`).
-
-### 3.5. Audio-to-Video Generation (`a2v.json`)
+**Audio-to-Video Generation (`a2v.json`)**
 Maps to the `A2VPipeline` interface.
 *   **User Goal**: Generate a video driven by an audio track (e.g., lip-sync or audio-reactive visuals).
 *   **Input Assets**: `audio_path`, `images` (Optional starting images).
@@ -93,7 +78,39 @@ Maps to the `A2VPipeline` interface.
 *   **Technical Parameters (Handled in ComfyUI)**: Audio waveform processing, multi-modal alignment, `num_inference_steps`.
 *   **Output**: Saved video file (`output_path`).
 
-### 3.6. Depth Processor Pre-processing (`depth_process.json`)
+### 3.2. Journey: Generate Images
+
+**Image Generation (`image_generation.json`)**
+Maps to the `ImageGenerationPipeline` interface.
+*   **User Goal**: Generate a single image from a text description.
+*   **Input Assets**: None.
+*   **User Parameters**: `prompt`, `seed`, `height`, `width`, `guidance_scale`.
+*   **Technical Parameters (Handled in ComfyUI)**: VAE decoding, sampler configurations, `num_inference_steps`.
+*   **Output**: Generated image array (`ImagePipelineOutputLike`).
+
+### 3.3. Journey: Retake
+
+**Retake / Inpainting (`retake.json`)**
+Maps to the `RetakePipeline` interface.
+*   **User Goal**: Fix a specific section of an existing video or fill a gap on the timeline.
+*   **Input Assets**: `video_path` (Original video), internally generated mask data.
+*   **User Parameters**: `prompt`, `negative_prompt`, `seed`, `start_time`, `end_time`, `enhance_prompt`, `regenerate_video`, `regenerate_audio`.
+*   **Technical Parameters (Handled in ComfyUI)**: Video frame extraction, mask tensor generation, latent blending, multi-modal guider parameters, distillation flags, `num_inference_steps`.
+*   **Output**: Modified video file (`output_path`).
+
+### 3.4. Journey: IC-LORA
+
+**IC-LoRA Generation (`ic_lora.json`)**
+Maps to the `IcLoraPipeline` interface.
+*   **User Goal**: Generate video with strong adherence to character/style using Image-Conditioned LoRA.
+*   **Input Assets**: `images` (Reference images for conditioning), `video_conditioning` (Timing/strength mapping).
+*   **User Parameters**: `prompt`, `seed`, `height`, `width`, `num_frames`, `frame_rate`.
+*   **Technical Parameters (Handled in ComfyUI)**: LoRA loading, attention injection, prompt embedding overrides.
+*   **Output**: Saved video file (`output_path`).
+
+### 3.5. Internal Pre-processing
+
+**Depth Processor Pre-processing (`depth_process.json`)**
 Maps to the `DepthProcessorPipeline` interface.
 *   **User Goal**: (Internal) Extract depth information from an image/frame for structural conditioning (ControlNet).
 *   **Input Assets**: `frame` (Image data).
@@ -101,7 +118,7 @@ Maps to the `DepthProcessorPipeline` interface.
 *   **Technical Parameters (Handled in ComfyUI)**: Depth model execution, tensor normalization.
 *   **Output**: Processed depth map image data (`FrameArray`).
 
-### 3.7. Pose Processor Pre-processing (`pose_process.json`)
+**Pose Processor Pre-processing (`pose_process.json`)**
 Maps to the `PoseProcessorPipeline` interface.
 *   **User Goal**: (Internal) Extract human pose skeletons from an image/frame for character conditioning (ControlNet).
 *   **Input Assets**: `frame` (Image data).
