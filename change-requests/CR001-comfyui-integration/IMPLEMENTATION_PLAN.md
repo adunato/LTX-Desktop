@@ -28,49 +28,72 @@ This plan outlines the steps required to implement the ComfyUI integration descr
     *   Create a new route in `backend/_routes/` (e.g., `workflows.py`) to expose the parsed workflows and their configurable parameters to the frontend.
     *   Wire the route into `app_factory.py`.
 
-## Phase 3: Pipeline Adapters and Progress Tracking
+## Phase 3: Image Generation Pipeline (Generate Images)
 
-**Goal:** Implement the adapter that bridges the strictly typed LTX-Desktop protocols with the dynamic ComfyUI engine.
+**Goal:** Implement the adapter and ComfyUI workflow for Text-to-Image generation first, as it is the simplest pipeline and serves as a good baseline.
 
-1.  **Implement `ComfyUIVideoPipeline`:**
-    *   Create a class implementing the `FastVideoPipeline` (or relevant) protocol.
-    *   Implement graph construction: merge the base JSON workflow with the incoming `workflow_params`.
-2.  **Implement Background Polling:**
-    *   Use the existing `TaskRunner` to spawn a background task upon job submission.
-    *   Poll the ComfyUI server for progress on the submitted `prompt_id`.
-    *   Translate the progress into standard `GenerationProgress` state objects.
+1.  **Workflow Creation:** Create and test the `image_generation.json` ComfyUI workflow with required `proxyWidgets` metadata (prompt, seed, dimensions, etc.).
+2.  **Implement `ComfyUIImagePipeline`:**
+    *   Create a class implementing the `ImageGenerationPipeline` protocol in `backend/services/comfyui/`.
+    *   Implement graph construction: map UI parameters to the `image_generation.json` nodes.
+3.  **Implement Progress Polling:** Set up the background task to poll the ComfyUI server for generation progress and translate it to `GenerationProgress` state.
+4.  **Handler Routing Update:** Update `ImageGenerationHandler` to route requests to the ComfyUI pipeline when the backend is set to `"comfyui"`.
+5.  **Validation:** 
+    *   Test End-to-End image generation locally via API.
+    *   Verify state transitions (`ComfyUIJobSlot` properly updates).
 
-## Phase 4: Handler Routing & Locking Integration
+## Phase 4: Video Generation Pipelines (Generate Videos)
 
-**Goal:** Update the centralized handler to securely route tasks based on the active backend.
+**Goal:** Implement adapters and workflows for Text-to-Video, Image-to-Video, and Audio-to-Video generation.
 
-1.  **Update `GenerationHandler`:**
-    *   In `backend/handlers/generation_handler.py`, read `generation_backend` from settings.
-    *   Implement branching logic:
-        *   If `"local"`: Use `GpuSlot` and standard pipeline logic (existing code).
-        *   If `"comfyui"`: Acquire lock, validate `ComfyUIJobSlot` is idle, set to running, release lock, and dispatch to `ComfyUIVideoPipeline`.
-2.  **Ensure Lock Safety:**
-    *   Verify the "lock -> check -> unlock -> heavy work -> lock -> update" pattern is strictly followed for the new `ComfyUIJobSlot`.
+1.  **Workflow Creation:** Create `video_generation.json` and `a2v.json` workflows with `proxyWidgets` metadata.
+2.  **Implement Adapters:**
+    *   Create classes implementing `FastVideoPipeline` and `A2VPipeline` protocols.
+    *   Handle base64 image data extraction and upload to ComfyUI for Image-to-Video conditioning.
+3.  **Handler Routing Update:** Update `GenerationHandler` (for video) to appropriately route based on the selected generation backend.
+4.  **Validation:**
+    *   Test Image-to-Video and Audio-to-Video End-to-End via API.
+    *   Verify generated media artifacts are properly fetched and saved locally.
 
-## Phase 5: Frontend Integration
+## Phase 5: Advanced Video Editing Pipelines (Retake & IC-LoRA)
 
-**Goal:** Update the React frontend to dynamically render UI elements based on the parsed ComfyUI workflows.
+**Goal:** Implement the complex video editing and styled generation pipelines.
 
-1.  **Backend Toggle:** Add a UI toggle in the settings to switch between Local and ComfyUI backends.
-2.  **Fetch Workflows:** On mount (if ComfyUI is active), fetch the available workflows from the new backend endpoint.
+1.  **Workflow Creation:** Create `retake.json` and `ic_lora.json` workflows.
+    *   `retake.json` needs to handle internal video masking, trimming based on start/end times, and blending.
+    *   `ic_lora.json` needs to handle specific LoRA conditioning inputs.
+2.  **Implement Adapters:** Create classes implementing `RetakePipeline` and `IcLoraPipeline` protocols.
+3.  **Handler Routing Update:** Update `RetakeHandler` and `IcLoraHandler` routing logic.
+4.  **Validation:**
+    *   Test Retake inpainting functionality using a sample masked video.
+    *   Test IC-LoRA generation using reference conditioning images.
+
+## Phase 6: Handler Routing & Locking Overview
+
+**Goal:** Ensure the centralized handler logic securely routes all tasks across all pipelines.
+
+1.  **Cross-Handler Lock Safety:**
+    *   Verify the "lock -> check -> unlock -> heavy work -> lock -> update" pattern is strictly followed across all handlers using the new `ComfyUIJobSlot`.
+    *   Ensure proper error state handling to prevent deadlocks.
+
+## Phase 7: Frontend Integration (Workflow Selection & Rendering)
+
+**Goal:** Update the React frontend to natively support Model/Workflow selection and dynamic UI elements.
+
+1.  **Model/Workflow Selection UI:** Add a dropdown/selector in each generation mode (Images, Videos, Retake) to pick between Local models and ComfyUI workflows.
+2.  **Fetch Workflows:** Fetch available ComfyUI workflows and their metadata from the backend endpoint.
 3.  **Dynamic Rendering:** 
     *   Parse the returned proxy widget schemas.
-    *   Dynamically render sliders, dropdowns, and text inputs based on the expected types of the proxy widgets.
-4.  **Submission Logic:** Update the `backendFetch` calls for generation to include the user-configured `workflow_params` dictionary.
+    *   Dynamically render sliders, dropdowns, and text inputs for the selected workflow.
+4.  **Submission Logic:** Update frontend API calls (`backendFetch`) to pass `workflow_params` and the selected backend configuration.
 
-## Phase 6: Testing and Validation
+## Phase 8: Testing and Validation
 
-**Goal:** Ensure the integration is robust and the local pipeline remains unaffected.
+**Goal:** Ensure the entire integration is robust, user-friendly, and the local pipeline remains unaffected.
 
 1.  **Backend Integration Tests:**
-    *   Create new tests in `backend/tests/` using fakes for the `ComfyUIClient`.
-    *   Verify routing logic works correctly based on settings.
+    *   Create comprehensive tests using fakes for the `ComfyUIClient` across all pipeline interfaces.
 2.  **Type Checking:**
-    *   Run `pnpm typecheck` to ensure the new dynamic dictionaries haven't violated strict mode rules elsewhere.
+    *   Run `pnpm typecheck` to ensure the new dynamic parameter dictionaries haven't violated strict mode rules.
 3.  **Local Regression:**
     *   Run existing `backend:test` suite to guarantee standard local generation is completely isolated and functional.
