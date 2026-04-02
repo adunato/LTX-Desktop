@@ -8,10 +8,11 @@ The core architectural philosophy is **Additive Isolation**: the ComfyUI integra
 
 ## 2. Core Components
 
-### 2.1. App Settings and API Types (Additive)
+### 2.1. API Types (Additive)
 
-*   **`AppSettings`**: A new setting, `generation_backend` (Literal: `"local" | "comfyui"`), will be added to dictate the routing logic.
-*   **`api_types.py`**: Generation request payloads (e.g., `VideoGenerationRequest`) will be extended with an optional `workflow_params: dict[str, Any] | None` to pass dynamic proxy widget values from the UI to the backend.
+*   **`api_types.py`**: Generation request payloads (e.g., `GenerateVideoRequest`) will be extended with an optional `workflow_id: str | None`. 
+    *   If `workflow_id` is present, the backend routes to ComfyUI.
+    *   If absent, the backend routes to local GPU models.
 
 ### 2.2. State Management (`AppState`)
 
@@ -25,20 +26,20 @@ A new, isolated module (`backend/services/comfyui/`) will encapsulate all ComfyU
 
 1.  **`WorkflowParser`**: 
     *   Reads predefined ComfyUI JSON workflows.
-    *   Extracts the `proxyWidgets` metadata to identify which internal node parameters are exposed to the UI.
+    *   Extracts **Standard UI Mappings** from the workflow metadata. These mappings link fixed LTX-Desktop UI parameters (e.g., Prompt, Resolution, Seed) to specific nodes and fields in the ComfyUI graph.
 2.  **`ComfyUIClient`**:
     *   Handles HTTP communication with the ComfyUI server (e.g., `/prompt`, `/upload/image`, `/history`).
-    *   Manages WebSocket connections (if required) for real-time progress updates.
 3.  **`ComfyUIPipelineAdapters`**:
     *   Implements the existing strictly-typed protocols (e.g., `FastVideoPipeline`).
-    *   Translates the incoming `VideoGenerationRequest` (including `workflow_params`) into the final execution graph JSON.
+    *   Translates incoming UI parameters into the final execution graph JSON using the **Standard UI Mappings**.
+    *   **Validation**: If a selected workflow is missing a required mapping for a UI parameter (e.g., no prompt node mapped), the adapter raises an explicit error.
 
 ### 2.4. Generation Handler Routing
 
-The `GenerationHandler` will act as a router based on the `generation_backend` setting:
+The `GenerationHandler` will route requests based on the presence of a `workflow_id`:
 
-*   **If `"local"`**: The handler proceeds normally, acquiring the `GpuSlot` and delegating to the native `services.video_processor`.
-*   **If `"comfyui"`**: The handler bypasses the `GpuSlot`, acquires the `ComfyUIJobSlot`, and delegates to the `ComfyUIPipelineAdapter`.
+*   **Native Models**: If `workflow_id` is null, the handler proceeds normally, acquiring the `GpuSlot`.
+*   **ComfyUI Workflows**: If `workflow_id` is provided, the handler bypasses the `GpuSlot`, acquires the `ComfyUIJobSlot`, and delegates to the `ComfyUIPipelineAdapter`.
 
 ### 2.5. Progress Translation
 
@@ -46,19 +47,29 @@ To ensure the frontend requires zero changes to its progress tracking logic:
 *   The `ComfyUIPipelineAdapter` will spawn a background polling task (using the existing `TaskRunner`).
 *   This task will translate ComfyUI's native execution progress into the exact `GenerationProgress` (e.g., `GenerationRunning`, `GenerationComplete`) state objects expected by `AppState`.
 
-### 2.6. Model and Workflow Selection
+### 2.6. Unified Model and Workflow Selection
 
-To support the ComfyUI integration natively alongside local generation, the UI will be updated to introduce a **Model / Workflow Selection** concept. 
-*   Users will be able to select their desired model or ComfyUI workflow for each generation mode.
-*   This selection exists in addition to the native LTX-Desktop models.
-*   When a ComfyUI workflow is selected, the UI dynamically loads the required `proxyWidgets` (parameters) specific to that workflow, overriding or supplementing the default parameter fields.
+The UI will provide a unified selector for each generation journey:
+*   The **"MODEL"** dropdown will list both native LTX models (e.g., "Fast", "Pro") and available ComfyUI workflows.
+*   **No Global Toggle**: ComfyUI workflows are treated as alternative "Models".
+*   **Fixed UI Inputs**: Selecting a ComfyUI workflow does *not* change the UI layout. It uses the existing standard sliders and fields. The backend is responsible for mapping these standard fields to the ComfyUI graph via metadata.
 
 ## 3. Supported Generation Use Cases (Functional Journeys)
 
 To ensure the ComfyUI integration has full feature parity with the local backend, we must map all existing generation capabilities to corresponding ComfyUI JSON workflows. 
-Rather than a direct 1:1 mapping of backend API payloads, workflows are designed functionally: grouped by user journeys and separating user-facing parameters from the technical pipeline mechanics handled internally by ComfyUI.
+Workflows are designed functionally, grouped by user journeys.
 
-Each workflow will need its own `proxyWidgets` metadata definition so the frontend can dynamically map user inputs to the specific ComfyUI nodes within that workflow graph.
+### Standard UI Mapping Metadata
+Each workflow JSON must include a `ui_mapping` object in its metadata. This object maps LTX-Desktop UI parameters to ComfyUI nodes. 
+
+Example mapping:
+```json
+"ui_mapping": {
+  "prompt": { "node": "6", "field": "text" },
+  "seed": { "node": "3", "field": "seed" },
+  "width": { "node": "5", "field": "width" }
+}
+```
 
 ### 3.1. Journey: Generate Videos
 
@@ -71,7 +82,7 @@ Maps to the `FastVideoPipeline` interface.
 *   **Output**: Saved video file (`output_path`).
 
 **Audio-to-Video Generation (`a2v.json`)**
-Maps to the `A2VPipeline` interface.
+Maps to the `a2v.json` workflow.
 *   **User Goal**: Generate a video driven by an audio track (e.g., lip-sync or audio-reactive visuals).
 *   **Input Assets**: `audio_path`, `images` (Optional starting images).
 *   **User Parameters**: `prompt`, `negative_prompt`, `seed`, `height`, `width`, `num_frames`, `frame_rate`, `audio_start_time`, `audio_max_duration`.
@@ -126,12 +137,13 @@ Maps to the `PoseProcessorPipeline` interface.
 *   **Technical Parameters (Handled in ComfyUI)**: Person detection model, pose estimation model execution.
 *   **Output**: Processed pose map image data (`FrameArray`).
 
-## 4. Architectural Flow (ComfyUI Active)
+## 4. Architectural Flow (ComfyUI Workflow Selected)
 
-1.  **UI Configuration**: Frontend fetches available workflows via a new endpoint (parsed by `WorkflowParser`) and dynamically renders controls for the exposed `proxyWidgets`.
-2.  **Submission**: User clicks generate. Frontend sends `VideoGenerationRequest` including `workflow_params`.
-3.  **Routing**: `GenerationHandler` sees `generation_backend == "comfyui"`.
-4.  **Locking**: Handler acquires lock -> sets `ComfyUIJobSlot` to running -> unlocks.
-5.  **Execution**: `ComfyUIPipelineAdapter` constructs the final JSON graph and sends it to the `ComfyUIClient`.
-6.  **Progress**: Background task polls ComfyUI, locking briefly to update `ComfyUIJobSlot` progress.
-7.  **Completion**: Adapter retrieves the final media from ComfyUI, saves it locally, and updates state to `GenerationComplete`.
+1.  **Workflow Fetching**: Frontend fetches available workflows via `/api/workflows` (parsed by `WorkflowParser`).
+2.  **Selection**: User selects a workflow from the **"MODEL"** dropdown.
+3.  **Submission**: User clicks generate. Frontend sends the request including the `workflow_id`.
+4.  **Routing**: `GenerationHandler` sees a non-null `workflow_id` and routes to ComfyUI.
+5.  **Locking**: Handler acquires lock -> sets `ComfyUIJobSlot` to running -> unlocks.
+6.  **Execution**: `ComfyUIPipelineAdapter` uses the `ui_mapping` metadata to inject UI parameters into the JSON graph and sends it to the `ComfyUIClient`.
+7.  **Progress**: Background task polls ComfyUI, locking briefly to update `ComfyUIJobSlot` progress.
+8.  **Completion**: Adapter retrieves the final media from ComfyUI, saves it locally, and updates state to `GenerationComplete`.

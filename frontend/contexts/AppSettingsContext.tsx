@@ -9,9 +9,7 @@ export interface InferenceSettings {
 export interface FastModelSettings {
   useUpscaler: boolean
 }
-
 export interface AppSettings {
-  generationBackend: 'local' | 'comfyui'
   useTorchCompile: boolean
   loadOnStartup: boolean
   hasLtxApiKey: boolean
@@ -30,7 +28,6 @@ export interface AppSettings {
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  generationBackend: 'local',
   useTorchCompile: false,
   loadOnStartup: true,
   hasLtxApiKey: false,
@@ -79,7 +76,6 @@ function toBackendProcessStatus(value: unknown): BackendProcessStatus | null {
 
 function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
   return {
-    generationBackend: data.generationBackend ?? DEFAULT_APP_SETTINGS.generationBackend,
     useTorchCompile: data.useTorchCompile ?? DEFAULT_APP_SETTINGS.useTorchCompile,
     loadOnStartup: data.loadOnStartup ?? DEFAULT_APP_SETTINGS.loadOnStartup,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,

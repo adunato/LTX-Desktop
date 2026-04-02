@@ -235,6 +235,7 @@ class GenerateVideoRequest(BaseModel):
     imagePath: str | None = None
     audioPath: str | None = None
     aspectRatio: Literal["16:9", "9:16"] = "16:9"
+    workflow_id: str | None = None
     workflow_params: dict[str, Any] | None = None
 
 
@@ -244,6 +245,7 @@ class GenerateImageRequest(BaseModel):
     height: int = 1024
     numSteps: int = 4
     numImages: int = 1
+    workflow_id: str | None = None
     workflow_params: dict[str, Any] | None = None
 
 

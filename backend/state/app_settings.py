@@ -133,7 +133,6 @@ UpdateSettingsRequest = AppSettingsPatch
 
 
 class SettingsResponse(SettingsBaseModel):
-    generation_backend: Literal["local", "comfyui"] = "local"
     use_torch_compile: bool = False
     load_on_startup: bool = False
     has_ltx_api_key: bool = False

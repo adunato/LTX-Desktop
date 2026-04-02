@@ -16,11 +16,13 @@ def get_available_workflows() -> list[dict[str, Any]]:
                 
             workflow_id = file_path.stem
             proxy_widgets = data.get("proxyWidgets", {})
+            ui_mapping = data.get("ui_mapping", {})
             
             workflows.append({
                 "id": workflow_id,
                 "name": data.get("name", workflow_id),
-                "proxyWidgets": proxy_widgets
+                "proxyWidgets": proxy_widgets,
+                "ui_mapping": ui_mapping
             })
         except Exception as e:
             print(f"Failed to parse workflow {file_path}: {e}")

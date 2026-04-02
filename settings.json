@@ -12,6 +12,5 @@
     "steps": 20,
     "use_upscaler": true
   },
-  "prompt_cache_size": 100,
-  "generation_backend": "local"
+  "prompt_cache_size": 100
 }

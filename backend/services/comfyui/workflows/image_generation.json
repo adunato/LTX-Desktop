@@ -1,6 +1,6 @@
 {
-  "name": "Text to Image",
-  "proxyWidgets": {
+  "name": "Text to Image (ComfyUI)",
+  "ui_mapping": {
     "prompt": { "node": "6", "field": "text" },
     "seed": { "node": "3", "field": "seed" },
     "width": { "node": "5", "field": "width" },
