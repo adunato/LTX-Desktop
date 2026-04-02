@@ -6,36 +6,47 @@ This plan outlines the steps required to implement the ComfyUI integration descr
 
 **Goal:** Extend core structures to support `workflow_id` routing.
 
-1.  **Update API Types:**
-    *   In `backend/api_types.py`, add `workflow_id: str | None = None` to `GenerateImageRequest`, `GenerateVideoRequest`, `RetakeRequest`, and `IcLoraGenerateRequest`.
-2.  **Update State Types:**
-    *   In `backend/state/app_state_types.py`, define `ComfyUIJobSlot` and add it to `AppState`.
+1.  **Update API Types (COMPLETED):**
+    *   In `backend/api_types.py`, add `workflow_id` to `GenerateImageRequest`, `GenerateVideoRequest`, `RetakeRequest`, and `IcLoraGenerateRequest`.
+2.  **Update State Types (COMPLETED):**
+    *   In `backend/state/app_state_types.py`, defined `ComfyUIJobSlot` and added it to `AppState`.
 
 ## Phase 2: Core ComfyUI Services (Metadata-Driven)
 
 **Goal:** Create isolated services for workflow discovery and execution.
 
-1.  **Implement `WorkflowParser`:**
+1.  **Implement `WorkflowParser` (IN PROGRESS):**
     *   Logic to scan `workflows/*.json`.
-    *   Introspect `node["properties"]["proxyWidgets"]` to build a map of standard UI keys to graph nodes.
-    *   Use ComfyUI `/object_info` (cached) to validate node types.
-2.  **Implement `ComfyUIClient`:**
+    *   Introspect `node["properties"]["proxyWidgets"]`.
+    *   **New**: Add support for reading/writing `{workflow_id}.config.json` for persistent user mappings and pipeline assignments.
+2.  **Implement `ComfyUIClient` (COMPLETED):**
     *   Wrapper for `/prompt`, `/upload/image`, `/history`, and `/view`.
-3.  **Expose Endpoint:**
-    *   `GET /api/workflows` to return valid workflows and their identified parameters.
+3.  **Expose Endpoint (COMPLETED):**
+    *   `GET /api/workflows` to return workflows and their mapping status.
+4.  **New Management Endpoints**:
+    *   `POST /api/workflows/import`: Save uploaded JSON to `workflows/` and trigger automapping.
+    *   `POST /api/workflows/config`: Save user-defined mappings to `{id}.config.json`.
 
-## Phase 3: Image Generation Journey (Vertical Slice)
+## Phase 3: Workflow Management & Image Generation Journey
 
-**Goal:** Complete end-to-end Image Generation slice.
+**Goal:** Implement the complete end-to-end management UI and the first generation slice.
 
-1.  **Backend: Pipeline Adapter:**
-    *   Implement `ComfyUIImagePipeline` (adapting `ImageGenerationPipeline` protocol).
-    *   Inject UI parameters into the graph using the discovered `proxyWidgets`.
-2.  **Frontend: Unified Selection:**
-    *   Integrate ComfyUI workflows into the Image tab's MODEL dropdown.
-    *   Map standard UI inputs (Prompt, Seed, etc.) to the selected workflow.
-3.  **Validation:**
-    -   Select a workflow, generate an image, and verify the result in the gallery.
+1.  **Frontend: Workflow Management Tab:**
+    *   Add "ComfyUI Workflows" tab to `SettingsModal.tsx`.
+    *   Implement Workflow list with Status LED (Green/Red) and Config icon.
+    *   Implement "Import Workflow" (File picker -> Upload).
+2.  **Frontend: Manual Mapping Modal:**
+    *   Create `ComfyUIMappingModal.tsx`.
+    *   Left column: Required LTX fields for the assigned pipeline.
+    *   Right column: Dropdowns listing all available node inputs from the workflow.
+3.  **Backend: Pipeline Adapter (Refactor):**
+    *   Implement `ComfyUIImagePipeline`.
+    *   Logic to patch graph JSON using the saved `.config.json` mappings.
+4.  **Frontend: Unified Selection:**
+    *   Integrate healthy (Green) ComfyUI workflows into the Image tab's MODEL dropdown.
+5.  **Validation:**
+    -   Import a workflow, assign to "Image Gen", perform manual mapping, verify LED turns green.
+    -   Select workflow in MODEL dropdown and generate an image.
 
 ## Phase 4: Video Generation Journey (Vertical Slice)
 
@@ -62,5 +73,5 @@ This plan outlines the steps required to implement the ComfyUI integration descr
 ## Phase 6: Final Polish & Safety
 
 1.  **Thread Safety**: Verify global lock management for the `ComfyUIJobSlot`.
-2.  **Global URL Configuration**: Add UI field for the ComfyUI Server Address.
+2.  **Global URL Configuration (COMPLETED)**: Added UI field for the ComfyUI Server Address.
 3.  **Local Regression**: Run full backend test suite.
