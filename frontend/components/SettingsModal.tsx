@@ -351,6 +351,26 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
               </div>
 
+              {/* ComfyUI Server URL */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sliders className="h-4 w-4 text-blue-400" />
+                  <h3 className="text-sm font-semibold text-white">ComfyUI Server URL</h3>
+                </div>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Address of your local ComfyUI server. Default is http://127.0.0.1:8188.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={settings.comfyuiUrl}
+                    onChange={(e) => onSettingsChange({ ...settings, comfyuiUrl: e.target.value })}
+                    placeholder="http://127.0.0.1:8188"
+                    className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+
               {!forceApiGenerations && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">

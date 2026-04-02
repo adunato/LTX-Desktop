@@ -220,7 +220,7 @@ class ImageGenerationHandler(StateHandlerBase):
         generation_id = uuid.uuid4().hex[:8]
         output_paths: list[Path] = []
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        client = ComfyUIClient()
+        client = ComfyUIClient(base_url=self.state.app_settings.comfyui_url)
 
         try:
             self._generation.start_api_generation(generation_id)

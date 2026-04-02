@@ -60,7 +60,6 @@ class ProModelSettings(SettingsBaseModel):
 
 
 class AppSettings(SettingsBaseModel):
-    generation_backend: Literal["local", "comfyui"] = "local"
     use_torch_compile: bool = False
     load_on_startup: bool = False
     ltx_api_key: str = ""
@@ -76,6 +75,7 @@ class AppSettings(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    comfyui_url: str = "http://127.0.0.1:8188"
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -148,6 +148,7 @@ class SettingsResponse(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    comfyui_url: str = ""
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:
