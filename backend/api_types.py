@@ -277,6 +277,7 @@ class RetakeRequest(BaseModel):
     duration: float
     prompt: str = ""
     mode: str = "replace_audio_and_video"
+    workflow_id: str | None = None
     workflow_params: dict[str, Any] | None = None
 
 
@@ -305,4 +306,5 @@ class IcLoraGenerateRequest(BaseModel):
     cfg_guidance_scale: float = 1.0
     negative_prompt: str = ""
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
+    workflow_id: str | None = None
     workflow_params: dict[str, Any] | None = None

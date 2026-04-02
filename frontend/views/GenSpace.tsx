@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Trash2, Download, Image, Video, X,
-  Heart, Film, Volume2, VolumeX, Sparkles, Sliders,
+  Trash2, Image, Video, X,
+  Heart, Film, Sparkles, Sliders,
   Clock, Monitor, ChevronUp, Scissors, Music,
-  ChevronLeft, ChevronRight, Copy, Check
+  ChevronLeft, ChevronRight, Copy, Check, Loader2
 } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
@@ -15,7 +15,6 @@ import { useIcLora } from '../hooks/use-ic-lora'
 import type { ICLoraConditioningType } from '../components/ICLoraPanel'
 import type { Asset } from '../types/project'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
-import { copyToAssetFolder } from '../lib/asset-copy'
 import { fileUrlToPath } from '../lib/url-to-path'
 import {
   FORCED_API_VIDEO_FPS,
@@ -23,76 +22,67 @@ import {
   getAllowedForcedApiDurations,
   sanitizeForcedApiVideoSettings,
 } from '../lib/api-video-options'
-import { logger } from '../lib/logger'
 import { RetakePanel } from '../components/RetakePanel'
 import { ICLoraPanel, CONDITIONING_TYPES } from '../components/ICLoraPanel'
 import { FreeApiKeyBubble } from '../components/FreeApiKeyBubble'
-import { type ComfyUIWorkflow } from '../components/ComfyUIWorkflowSelector'
+
+export interface ProxyWidget {
+  node: string
+  field: string
+}
+
+export interface ComfyUIWorkflow {
+  id: string
+  name: string
+  ui_mapping: Record<string, ProxyWidget>
+}
 
 // Asset card with hover overlays
 function AssetCard({
   asset,
+  isSelected,
+  onSelect,
   onDelete,
+  onToggleFavorite,
   onPlay,
   onDragStart,
-  onCreateVideo,
-  onRetake,
-  onIcLora,
-  onToggleFavorite
+  size,
 }: {
   asset: Asset
-  onDelete: () => void
-  onPlay: () => void
+  isSelected: boolean
+  onSelect: (asset: Asset) => void
+  onDelete: (id: string) => void
+  onToggleFavorite: (id: string) => void
+  onPlay: (asset: Asset) => void
   onDragStart: (e: React.DragEvent, asset: Asset) => void
-  onCreateVideo?: (asset: Asset) => void
-  onRetake?: (asset: Asset) => void
-  onIcLora?: (asset: Asset) => void
-  onToggleFavorite?: () => void
+  size: GallerySize
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isHovered, setIsHovered] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [isMuted, setIsMuted] = useState(true)
-  const isFavorite = asset.favorite || false
 
-  useEffect(() => {
+  const handleMouseEnter = () => {
+    setIsHovered(true)
     if (asset.type === 'video' && videoRef.current) {
-      if (isHovered) {
-        videoRef.current.play().catch(() => {})
-      } else {
-        videoRef.current.pause()
-        videoRef.current.currentTime = 0
-        setCurrentTime(0)
-      }
-    }
-  }, [isHovered, asset.type])
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime)
+      videoRef.current.currentTime = 0
+      void videoRef.current.play()
     }
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const handleDownload = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const a = document.createElement('a')
-    a.href = asset.url
-    a.download = asset.path.split('/').pop() || `${asset.type}-${asset.id}`
-    a.click()
+  const handleMouseLeave = () => {
+    setIsHovered(false)
+    if (asset.type === 'video' && videoRef.current) {
+      videoRef.current.pause()
+    }
   }
 
   return (
     <div
-      className="relative group cursor-pointer rounded-xl overflow-hidden bg-zinc-900"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={onPlay}
+      className={`relative group rounded-xl overflow-hidden bg-zinc-900 border-2 transition-all cursor-pointer ${
+        isSelected ? 'border-blue-500' : 'border-transparent hover:border-zinc-700'
+      } ${size === 'small' ? 'aspect-square' : 'aspect-video'}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={() => onSelect(asset)}
       draggable={asset.type === 'image'}
       onDragStart={(e) => asset.type === 'image' && onDragStart(e, asset)}
     >
@@ -100,189 +90,115 @@ function AssetCard({
         <video 
           ref={videoRef}
           src={asset.url} 
-          className="w-full aspect-video object-contain"
-          muted={isMuted}
-          loop
-          onTimeUpdate={handleTimeUpdate}
+          muted 
+          loop 
+          playsInline
+          className="w-full h-full object-cover"
         />
       ) : (
-        <img src={asset.url} alt="" className="w-full aspect-video object-contain" />
+        <img 
+          src={asset.url} 
+          alt="" 
+          className="w-full h-full object-cover"
+        />
       )}
-      
-      {/* Favorite heart - always visible when favorited */}
-      {isFavorite && !isHovered && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite?.() }}
-          className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white transition-colors z-10"
-        >
-          <Heart className="h-3.5 w-3.5 fill-current" />
-        </button>
-      )}
-      
-      {/* Hover overlay */}
-      <div className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 transition-opacity duration-200 ${
-        isHovered ? 'opacity-100' : 'opacity-0'
-      }`}>
-        {/* Top buttons */}
-        <div className="absolute top-2 left-2 right-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleFavorite?.() }}
-              className={`p-1.5 rounded-lg backdrop-blur-md transition-colors ${
-                isFavorite ? 'bg-white/20 text-white' : 'bg-black/40 text-white hover:bg-black/60'
-              }`}
-            >
-              <Heart className={`h-3.5 w-3.5 ${isFavorite ? 'fill-current' : ''}`} />
-            </button>
-            
-            {asset.type === 'image' && (
-              <>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onCreateVideo?.(asset) }}
-                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
-                >
-                  <Film className="h-3 w-3" />
-                  Create video
-                </button>
-              </>
-            )}
-            {asset.type === 'video' && (
-              <>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onRetake?.(asset) }}
-                  className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
-                >
-                  <Scissors className="h-3 w-3" />
-                  Retake
-                </button>
-                {onIcLora && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onIcLora(asset) }}
-                    className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    IC-LoRA
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleDownload}
-              className="p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-            {/* Tools button hidden for now */}
-          </div>
-        </div>
-        
-        {/* Bottom controls for video */}
-        {asset.type === 'video' && (
-          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="px-2 py-1 rounded-lg bg-black/50 backdrop-blur-md text-white text-xs font-mono">
-                {formatTime(currentTime)}
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted) }}
-                className="p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
-              >
-                {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* Delete button (subtle, bottom right) */}
-        {(
+      {/* Hover Overlays */}
+      <div className={`absolute inset-0 bg-black/40 transition-opacity flex flex-col justify-between p-2 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="flex justify-end gap-1">
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white/70 hover:bg-red-500/80 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(asset.id) }}
+            className={`p-1.5 rounded-lg backdrop-blur-md transition-colors ${
+              asset.favorite ? 'bg-blue-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            <Heart className={`h-3.5 w-3.5 ${asset.favorite ? 'fill-current' : ''}`} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(asset.id) }}
+            className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-red-500/80 backdrop-blur-md transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        )}
+        </div>
+
+        <div className="flex justify-between items-end">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-white/70 font-medium px-1.5 py-0.5 rounded-md bg-black/40 backdrop-blur-sm w-fit">
+              {asset.type === 'video' ? (asset.duration ? `${asset.duration}s` : 'Video') : 'Image'}
+            </span>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onPlay(asset) }}
+            className="p-2 rounded-full bg-white text-black hover:scale-110 transition-transform shadow-lg"
+          >
+            <Video className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      
     </div>
   )
 }
 
-// Dropdown component for settings
-function SettingsDropdown({ 
-  trigger, 
-  options, 
-  value, 
+function SettingsDropdown({
+  title,
+  value,
   onChange,
-  title 
-}: { 
-  trigger: React.ReactNode
-  options: { value: string; label: string; disabled?: boolean; tooltip?: string; icon?: React.ReactNode }[]
+  options,
+  trigger,
+  className,
+}: {
+  title: string
   value: string
   onChange: (value: string) => void
-  title: string
+  options: { value: string; label: string; icon?: React.ReactNode; disabled?: boolean; tooltip?: string }[]
+  trigger: React.ReactNode
+  className?: string
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false)
       }
     }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
+    document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isOpen])
-  
+  }, [])
+
   return (
-    <div ref={dropdownRef} className="relative">
-      <button 
+    <div className={`relative ${className}`} ref={dropdownRef}>
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-1.5 rounded-md transition-colors ${isOpen ? 'bg-zinc-700 hover:bg-zinc-700' : 'hover:bg-zinc-800'}`}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-zinc-800 transition-colors"
       >
         {trigger}
       </button>
-      
+
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-[9999]">
-          <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">{title}</div>
-          <div className="space-y-1">
-            {options.map(option => (
-              <div key={option.value} className="relative group/option">
-                <button
-                  onClick={() => { if (!option.disabled) { onChange(option.value); setIsOpen(false) } }}
-                  className={`w-full flex items-center justify-between px-2 py-2 rounded-md transition-colors text-left ${
-                    option.disabled
-                      ? 'cursor-not-allowed'
-                      : value === option.value ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-zinc-700'
-                  }`}
-                >
-                  <span className={`flex items-center gap-2.5 text-sm ${
-                    option.disabled 
-                      ? 'text-zinc-600' 
-                      : value === option.value ? 'text-white' : 'text-zinc-400'
-                  }`}>
-                    {option.icon && <span className="flex-shrink-0">{option.icon}</span>}
-                    {option.label}
-                  </span>
-                  {value === option.value && !option.disabled && (
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-                {option.disabled && option.tooltip && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-700 rounded text-xs text-zinc-300 whitespace-nowrap opacity-0 group-hover/option:opacity-100 pointer-events-none z-[10000] transition-opacity">
-                    {option.tooltip}
-                  </div>
-                )}
-              </div>
+        <div className="absolute bottom-full mb-2 left-0 w-48 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-1">
+          <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-800/50">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{title}</span>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                disabled={opt.disabled}
+                onClick={() => {
+                  onChange(opt.value)
+                  setIsOpen(false)
+                }}
+                title={opt.tooltip}
+                className={`w-full px-3 py-2 text-left text-xs transition-colors flex items-center gap-2 ${
+                  opt.disabled ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-zinc-800'
+                } ${value === opt.value ? 'text-blue-400 bg-blue-500/5' : 'text-zinc-300'}`}
+              >
+                {opt.icon}
+                {opt.label}
+              </button>
             ))}
           </div>
         </div>
@@ -291,35 +207,96 @@ function SettingsDropdown({
   )
 }
 
-// Lightricks brand icon
-function LightricksIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M17.0073 8.18934C16.3266 5.6556 14.9346 2.06903 12.3065 2.06903C9.27204 2.06903 6.86627 7.24621 5.45487 11.7948C4.79654 13.9203 4.35877 15.9049 4.17755 17.1736C4.10214 17.5829 4.06274 18.0044 4.06274 18.4347C4.06274 22.2903 7.22553 25.4338 11.1133 25.4338C15.5206 25.4338 23.9376 22.7073 23.9376 18.4347C23.9376 17.1179 23.1376 15.948 21.9018 14.9595L21.9039 14.9575C22.4493 13.7707 22.847 12.648 23.001 11.705C23.1934 10.5053 23.0074 9.5494 22.4429 8.88217C21.7692 8.07382 20.7107 7.85572 19.6586 7.84288C18.8826 7.84288 17.9777 7.96904 17.0073 8.18934ZM8.00176 9.17083C7.6945 9.93266 7.02317 11.7419 6.70157 12.9799C7.93005 11.9987 9.2965 11.1653 10.7091 10.4796C12.2325 9.73758 13.9171 9.06448 15.518 8.58411C15.08 6.98293 13.9585 3.62158 12.3129 3.62158C11.0298 3.62158 9.41958 5.69374 8.00176 9.17083ZM20.6201 14.083L20.6209 14.0786C21.0507 13.1163 21.3522 12.2118 21.4741 11.4547C21.5511 10.9607 21.5832 10.2872 21.2752 9.89577C20.9416 9.46599 20.1975 9.39543 19.6521 9.38901C18.9932 9.38901 18.2117 9.49943 17.3641 9.69208L17.3683 9.69702C17.586 10.7217 17.7526 11.772 17.8808 12.7968C18.8527 13.16 19.7877 13.5908 20.6201 14.083ZM15.8828 10.0897C14.6739 10.4588 13.4041 10.9464 12.209 11.4846C13.4346 11.588 14.8471 11.8527 16.2581 12.2608C16.1554 11.5367 16.0273 10.8061 15.8799 10.0948L15.8828 10.0897ZM11.1133 12.9816C8.07878 12.9816 5.60884 15.4258 5.60884 18.4347C5.60884 21.4435 8.07878 23.8878 11.1133 23.8878C13.8701 23.8878 16.3653 21.6639 16.6048 18.9158C16.7011 17.7546 16.669 15.9263 16.4637 13.9311C14.6294 13.3385 12.6763 12.9816 11.1133 12.9816ZM18.3883 22.2069C17.7984 22.4697 17.1711 22.7085 16.5284 22.9184C18.0872 21.3274 19.8832 18.8193 21.1982 16.3689L21.1997 16.3654C21.9756 17.0509 22.3915 17.7593 22.3915 18.4347C22.3915 19.6985 20.9288 21.0778 18.3883 22.2069ZM19.9493 15.4655L19.9473 15.4707C19.4291 16.4567 18.8221 17.4625 18.1833 18.4092C18.2214 17.4089 18.1892 16.0386 18.0611 14.5212C18.71 14.7948 19.3456 15.1021 19.9493 15.4655Z" fill="currentColor" />
-    </svg>
-  )
-}
-
 function ZitIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M19.113 12.2515H16.5605L14.008 8.63382L6.04545 19.9068H8.60348L14.0079 12.2518L16.5605 12.2515L11.156 19.9068H13.721L19.113 12.2515V15.8693L16.2716 19.9073V22.0063H2L14.008 5L19.113 12.2515Z" fill="currentColor"/>
-      <path d="M26 22.0064L21.9704 22.0063V19.9151L19.113 15.8693V12.2515L26 22.0064Z" fill="currentColor"/>
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
     </svg>
   )
 }
 
-// Square icon for aspect ratio
+function LightricksIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" />
+    </svg>
+  )
+}
+
 function AspectIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M9 3v18" />
     </svg>
   )
 }
 
-// Prompt bar component matching the design
-// Two-row layout: prompt row on top, settings row below
+function GridSmallIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <rect x="2" y="2" width="4" height="4" rx="0.5" />
+      <rect x="8" y="2" width="4" height="4" rx="0.5" />
+      <rect x="14" y="2" width="4" height="4" rx="0.5" />
+      <rect x="20" y="2" width="2" height="4" rx="0.5" />
+      <rect x="2" y="8" width="4" height="4" rx="0.5" />
+      <rect x="8" y="8" width="4" height="4" rx="0.5" />
+      <rect x="14" y="8" width="4" height="4" rx="0.5" />
+      <rect x="20" y="8" width="2" height="4" rx="0.5" />
+      <rect x="2" y="14" width="4" height="4" rx="0.5" />
+      <rect x="8" y="14" width="4" height="4" rx="0.5" />
+      <rect x="14" y="14" width="4" height="4" rx="0.5" />
+      <rect x="20" y="14" width="2" height="4" rx="0.5" />
+    </svg>
+  )
+}
+
+function GridMediumIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <rect x="2" y="2" width="6" height="6" rx="1" />
+      <rect x="10" y="2" width="6" height="6" rx="1" />
+      <rect x="18" y="2" width="4" height="6" rx="1" />
+      <rect x="2" y="10" width="6" height="6" rx="1" />
+      <rect x="10" y="10" width="6" height="6" rx="1" />
+      <rect x="18" y="10" width="4" height="6" rx="1" />
+      <rect x="2" y="18" width="6" height="4" rx="1" />
+      <rect x="10" y="18" width="6" height="4" rx="1" />
+      <rect x="18" y="18" width="4" height="4" rx="1" />
+    </svg>
+  )
+}
+
+function GridLargeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <rect x="2" y="2" width="9" height="9" rx="1.5" />
+      <rect x="13" y="2" width="9" height="9" rx="1.5" />
+      <rect x="2" y="13" width="9" height="9" rx="1.5" />
+      <rect x="13" y="13" width="9" height="9" rx="1.5" />
+    </svg>
+  )
+}
+
+type GallerySize = 'small' | 'medium' | 'large'
+
+const gallerySizeClasses: Record<GallerySize, string> = {
+  small: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7',
+  medium: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
+  large: 'grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3',
+}
+
+const DEFAULT_VIDEO_SETTINGS = {
+  model: 'fast',
+  duration: 5,
+  videoResolution: '540p',
+  fps: 24,
+  aspectRatio: '16:9',
+  imageResolution: '1080p',
+  variations: 1,
+  audio: true,
+}
+
 function PromptBar({
   mode,
   onModeChange,
@@ -344,6 +321,7 @@ function PromptBar({
   onIcLoraStrengthChange,
   selectedWorkflowId,
   onWorkflowSelect,
+  comfyWorkflows,
 }: {
   mode: 'image' | 'video' | 'retake' | 'ic-lora'
   onModeChange: (mode: 'image' | 'video' | 'retake' | 'ic-lora') => void
@@ -377,31 +355,15 @@ function PromptBar({
   onIcLoraStrengthChange?: (strength: number) => void
   selectedWorkflowId: string | null
   onWorkflowSelect: (id: string | null) => void
+  comfyWorkflows: ComfyUIWorkflow[]
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isAudioDragOver, setIsAudioDragOver] = useState(false)
-  const [comfyWorkflows, setComfyWorkflows] = useState<ComfyUIWorkflow[]>([])
   const isRetake = mode === 'retake'
   const isIcLora = mode === 'ic-lora'
   
-  // Fetch available ComfyUI workflows
-  useEffect(() => {
-    const fetchWorkflows = async () => {
-      try {
-        const res = await backendFetch('/api/workflows')
-        if (res.ok) {
-          const data = await res.json()
-          setComfyWorkflows(data)
-        }
-      } catch (e) {
-        console.error('Failed to fetch workflows', e)
-      }
-    }
-    fetchWorkflows()
-  }, [])
-
   const LOCAL_MAX_DURATION: Record<string, number> = { '540p': 20, '720p': 10, '1080p': 5 }
   const localMaxDuration = LOCAL_MAX_DURATION[settings.videoResolution] ?? 20
   const videoDurationOptions = shouldVideoGenerateWithLtxApi
@@ -835,72 +797,6 @@ function PromptBar({
   )
 }
 
-// Gallery size icon components
-function GridSmallIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="4" height="4" rx="0.5" />
-      <rect x="8" y="2" width="4" height="4" rx="0.5" />
-      <rect x="14" y="2" width="4" height="4" rx="0.5" />
-      <rect x="20" y="2" width="2" height="4" rx="0.5" />
-      <rect x="2" y="8" width="4" height="4" rx="0.5" />
-      <rect x="8" y="8" width="4" height="4" rx="0.5" />
-      <rect x="14" y="8" width="4" height="4" rx="0.5" />
-      <rect x="20" y="8" width="2" height="4" rx="0.5" />
-      <rect x="2" y="14" width="4" height="4" rx="0.5" />
-      <rect x="8" y="14" width="4" height="4" rx="0.5" />
-      <rect x="14" y="14" width="4" height="4" rx="0.5" />
-      <rect x="20" y="14" width="2" height="4" rx="0.5" />
-    </svg>
-  )
-}
-
-function GridMediumIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="6" height="6" rx="1" />
-      <rect x="10" y="2" width="6" height="6" rx="1" />
-      <rect x="18" y="2" width="4" height="6" rx="1" />
-      <rect x="2" y="10" width="6" height="6" rx="1" />
-      <rect x="10" y="10" width="6" height="6" rx="1" />
-      <rect x="18" y="10" width="4" height="6" rx="1" />
-      <rect x="2" y="18" width="6" height="4" rx="1" />
-      <rect x="10" y="18" width="6" height="4" rx="1" />
-      <rect x="18" y="18" width="4" height="4" rx="1" />
-    </svg>
-  )
-}
-
-function GridLargeIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <rect x="2" y="2" width="9" height="9" rx="1.5" />
-      <rect x="13" y="2" width="9" height="9" rx="1.5" />
-      <rect x="2" y="13" width="9" height="9" rx="1.5" />
-      <rect x="13" y="13" width="9" height="9" rx="1.5" />
-    </svg>
-  )
-}
-
-type GallerySize = 'small' | 'medium' | 'large'
-
-const gallerySizeClasses: Record<GallerySize, string> = {
-  small: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7',
-  medium: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
-  large: 'grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3',
-}
-
-const DEFAULT_VIDEO_SETTINGS = {
-  model: 'fast',
-  duration: 5,
-  videoResolution: '540p',
-  fps: 24,
-  aspectRatio: '16:9',
-  imageResolution: '1080p',
-  variations: 1,
-  audio: true,
-}
-
 export function GenSpace() {
   const {
     currentProject,
@@ -911,7 +807,6 @@ export function GenSpace() {
     toggleFavorite,
     genSpaceEditImageUrl,
     setGenSpaceEditImageUrl,
-    setGenSpaceEditMode,
     genSpaceAudioUrl,
     setGenSpaceAudioUrl,
     genSpaceRetakeSource,
@@ -979,7 +874,6 @@ export function GenSpace() {
     resetRetake,
     isRetaking,
     retakeStatus,
-    retakeError,
     retakeResult,
   } = useRetake()
 
@@ -998,10 +892,34 @@ export function GenSpace() {
     duration?: number
   }>({ videoUrl: null, videoPath: null, duration: undefined })
   const [activeRetakeSource, setActiveRetakeSource] = useState<GenSpaceRetakeSource | null>(null)
-  const [activeIcLoraSource, setActiveIcLoraSource] = useState<{
-    assetId?: string
-    linkedClipIds?: string[]
-  } | null>(null)
+
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
+  const [comfyWorkflows, setComfyWorkflows] = useState<ComfyUIWorkflow[]>([])
+
+  // Fetch available ComfyUI workflows
+  useEffect(() => {
+    const fetchWorkflows = async () => {
+      try {
+        const res = await backendFetch('/api/workflows')
+        if (res.ok) {
+          const data = await res.json()
+          setComfyWorkflows(data)
+        }
+      } catch (e) {
+        console.error('Failed to fetch workflows', e)
+      }
+    }
+    fetchWorkflows()
+  }, [])
+
+  const {
+    submitIcLora,
+    resetIcLora,
+    isIcLoraGenerating,
+    icLoraStatus,
+    icLoraResult,
+  } = useIcLora()
+
   const [icLoraInput, setIcLoraInput] = useState({
     videoUrl: null as string | null,
     videoPath: null as string | null,
@@ -1010,377 +928,182 @@ export function GenSpace() {
     ready: false,
   })
   const [icLoraPanelKey, setIcLoraPanelKey] = useState(0)
-  const [icLoraCondType, setIcLoraCondType] = useState<ICLoraConditioningType>('canny')
-  const [icLoraStrength, setIcLoraStrength] = useState(1.0)
   const [icLoraInitial, setIcLoraInitial] = useState<{
     videoUrl: string | null
     videoPath: string | null
   }>({ videoUrl: null, videoPath: null })
 
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
-
-  const {
-    submitIcLora,
-    resetIcLora,
-    isIcLoraGenerating,
-    icLoraStatus,
-    icLoraError,
-    icLoraResult,
-  } = useIcLora()
-  
-  // Handle incoming frame from the Video Editor for editing
+  // Sync edit mode/assets from project context
   useEffect(() => {
     if (genSpaceEditImageUrl) {
-      setMode('video')
       setInputImage(genSpaceEditImageUrl)
-      setPrompt('')
+      setMode('video')
       setGenSpaceEditImageUrl(null)
-      setGenSpaceEditMode(null)
     }
-  }, [genSpaceEditImageUrl, setGenSpaceEditImageUrl, setGenSpaceEditMode])
+  }, [genSpaceEditImageUrl, setGenSpaceEditImageUrl])
 
-  // Handle incoming audio from the Video Editor for A2V
   useEffect(() => {
     if (genSpaceAudioUrl) {
-      setMode('video')
       setInputAudio(genSpaceAudioUrl)
-      setPrompt('')
+      setMode('video')
       setGenSpaceAudioUrl(null)
     }
   }, [genSpaceAudioUrl, setGenSpaceAudioUrl])
 
   useEffect(() => {
-    if (!genSpaceRetakeSource) return
-    setMode('retake')
-    setPrompt('')
-    setActiveRetakeSource(genSpaceRetakeSource)
-    setRetakeInitial({
-      videoUrl: genSpaceRetakeSource.videoUrl,
-      videoPath: genSpaceRetakeSource.videoPath,
-      duration: genSpaceRetakeSource.duration,
-    })
-    setRetakePanelKey((prev) => prev + 1)
-    setGenSpaceRetakeSource(null)
+    if (genSpaceRetakeSource) {
+      setActiveRetakeSource(genSpaceRetakeSource)
+      setRetakeInitial({
+        videoUrl: genSpaceRetakeSource.videoUrl,
+        videoPath: genSpaceRetakeSource.videoPath,
+        duration: genSpaceRetakeSource.duration,
+      })
+      setMode('retake')
+      setGenSpaceRetakeSource(null)
+      setRetakePanelKey((prev) => prev + 1)
+    }
   }, [genSpaceRetakeSource, setGenSpaceRetakeSource])
 
   useEffect(() => {
-    if (!genSpaceIcLoraSource) return
-    if (forceApiGenerations) {
-      setGenSpaceIcLoraSource(null)
-      return
-    }
-    setMode('ic-lora')
-    setPrompt('')
-    setActiveIcLoraSource({
-      assetId: genSpaceIcLoraSource.assetId,
-      linkedClipIds: genSpaceIcLoraSource.linkedClipIds,
-    })
-    setIcLoraInitial({
-      videoUrl: genSpaceIcLoraSource.videoUrl,
-      videoPath: genSpaceIcLoraSource.videoPath,
-    })
-    setIcLoraPanelKey((prev) => prev + 1)
-    setGenSpaceIcLoraSource(null)
-  }, [genSpaceIcLoraSource, forceApiGenerations, setGenSpaceIcLoraSource])
-
-  useEffect(() => {
-    if (forceApiGenerations && mode === 'ic-lora') {
-      setMode('video')
-    }
-  }, [forceApiGenerations, mode])
-
-  useEffect(() => {
-    if (!shouldVideoGenerateWithLtxApi || mode !== 'video') return
-    setSettings((prev) => applyForcedVideoSettings({ ...prev, model: 'fast' }))
-  }, [applyForcedVideoSettings, mode, shouldVideoGenerateWithLtxApi])
-
-  useEffect(() => {
-    if (retakeError) {
-      setLocalError(retakeError)
-    }
-  }, [retakeError])
-
-  useEffect(() => {
-    if (icLoraError) {
-      setLocalError(icLoraError)
-    }
-  }, [icLoraError])
-
-  // Force pro model + resolution when audio is attached (A2V only supports pro @ 1080p 16:9)
-  useEffect(() => {
-    if (inputAudio) {
-      setSettings(prev => applyForcedVideoSettings({ ...prev, model: 'pro', aspectRatio: '16:9' }))
-    }
-  }, [inputAudio]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Only show assets that were generated (have generationParams), not imported files
-  const assets = (currentProject?.assets || []).filter(a => a.generationParams)
-  const [lastPrompt, setLastPrompt] = useState('')
-  
-  // When video generation completes, add to project assets
-  useEffect(() => {
-    if (!videoUrl || !videoPath || !currentProjectId || isGenerating) return
-
-    const generationKey = `${videoUrl}|${videoPath}`
-    if (persistedVideoKeyRef.current === generationKey) return
-    persistedVideoKeyRef.current = generationKey
-
-    const genMode = inputAudio
-      ? 'audio-to-video'
-      : inputImage ? 'image-to-video' : 'text-to-video'
-    const savedVideoSettings = applyForcedVideoSettings(settings)
-
-    ;(async () => {
-      try {
-        const copied = await copyToAssetFolder(videoPath, currentProjectId)
-        const finalPath = copied?.path ?? videoPath
-        const finalUrl = copied?.url ?? videoUrl
-        addAsset(currentProjectId, {
-          type: 'video',
-          path: finalPath,
-          url: finalUrl,
-          prompt: lastPrompt,
-          resolution: savedVideoSettings.videoResolution,
-          duration: savedVideoSettings.duration,
-          generationParams: {
-            mode: genMode as 'text-to-video' | 'image-to-video' | 'audio-to-video',
-            prompt: lastPrompt,
-            model: savedVideoSettings.model,
-            duration: savedVideoSettings.duration,
-            resolution: savedVideoSettings.videoResolution,
-            fps: savedVideoSettings.fps,
-            audio: savedVideoSettings.audio || false,
-            cameraMotion: 'none',
-            imageAspectRatio: savedVideoSettings.aspectRatio,
-            imageSteps: 4,
-            inputImageUrl: inputImage || undefined,
-            inputAudioUrl: inputAudio || undefined,
-          },
-          takes: [{
-            url: finalUrl,
-            path: finalPath,
-            createdAt: Date.now(),
-          }],
-          activeTakeIndex: 0,
-        })
-        reset()
-      } catch (err) {
-        persistedVideoKeyRef.current = null
-        logger.error(`Failed to persist generated video asset: ${err}`)
-      }
-    })()
-  }, [videoUrl, videoPath, currentProjectId, isGenerating, applyForcedVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset])
-
-  // When retake completes, add as take or new asset
-  useEffect(() => {
-    if (!retakeResult || !currentProjectId || isRetaking) return
-    const submission = retakeSubmissionRef.current
-    if (!submission) return
-    retakeSubmissionRef.current = null
-
-    ;(async () => {
-      const usedPrompt = submission.prompt
-      const usedInput = submission.input
-      const copied = await copyToAssetFolder(retakeResult.videoPath, currentProjectId)
-      const finalPath = copied?.path ?? retakeResult.videoPath
-      const finalUrl = copied?.url ?? retakeResult.videoUrl
-
-      if (activeRetakeSource?.assetId) {
-        const sourceAsset = currentProject?.assets?.find(a => a.id === activeRetakeSource.assetId)
-        if (sourceAsset) {
-          const newTakeIndex = sourceAsset.takes ? sourceAsset.takes.length : 1
-          addTakeToAsset(currentProjectId, sourceAsset.id, {
-            url: finalUrl,
-            path: finalPath,
-            createdAt: Date.now(),
-          })
-          if (activeRetakeSource.linkedClipIds?.length) {
-            setPendingRetakeUpdate({
-              assetId: sourceAsset.id,
-              clipIds: activeRetakeSource.linkedClipIds,
-              newTakeIndex,
-            })
-          }
-        }
-      } else {
-        addAsset(currentProjectId, {
-          type: 'video',
-          path: finalPath,
-          url: finalUrl,
-          prompt: usedPrompt,
-          resolution: '',
-          duration: usedInput.duration,
-          generationParams: {
-            mode: 'retake',
-            prompt: usedPrompt,
-            model: 'pro',
-            duration: usedInput.duration,
-            resolution: '',
-            fps: 24,
-            audio: true,
-            cameraMotion: 'none',
-            retakeVideoPath: finalPath,
-            retakeStartTime: usedInput.startTime,
-            retakeDuration: usedInput.duration,
-            retakeMode: 'replace_audio_and_video',
-          },
-          takes: [{ url: finalUrl, path: finalPath, createdAt: Date.now() }],
-          activeTakeIndex: 0,
-        })
-        setMode('video')
-      }
-
-      setActiveRetakeSource(null)
-      resetRetake()
-    })()
-  }, [retakeResult, isRetaking, currentProjectId, currentProject?.assets, activeRetakeSource, addAsset, addTakeToAsset, setPendingRetakeUpdate, resetRetake])
-
-  useEffect(() => {
-    if (!icLoraResult || !currentProjectId || isIcLoraGenerating) return
-    const submission = icLoraSubmissionRef.current
-    if (!submission) return
-    icLoraSubmissionRef.current = null
-
-    ;(async () => {
-      const copied = await copyToAssetFolder(icLoraResult.videoPath, currentProjectId)
-      const finalPath = copied?.path ?? icLoraResult.videoPath
-      const finalUrl = copied?.url ?? icLoraResult.videoUrl
-
-      if (activeIcLoraSource?.assetId) {
-        const sourceAsset = currentProject?.assets?.find(a => a.id === activeIcLoraSource.assetId)
-        if (sourceAsset) {
-          const newTakeIndex = sourceAsset.takes ? sourceAsset.takes.length : 1
-          addTakeToAsset(currentProjectId, sourceAsset.id, {
-            url: finalUrl,
-            path: finalPath,
-            createdAt: Date.now(),
-          })
-          if (activeIcLoraSource.linkedClipIds?.length) {
-            setPendingIcLoraUpdate({
-              assetId: sourceAsset.id,
-              clipIds: activeIcLoraSource.linkedClipIds,
-              newTakeIndex,
-            })
-          }
-        }
-      } else {
-        addAsset(currentProjectId, {
-          type: 'video',
-          path: finalPath,
-          url: finalUrl,
-          prompt: submission.prompt,
-          resolution: '',
-          generationParams: {
-            mode: 'ic-lora',
-            prompt: submission.prompt,
-            model: 'fast',
-            duration: 0,
-            resolution: '',
-            fps: 24,
-            audio: false,
-            cameraMotion: 'none',
-            icLoraVideoPath: submission.input.videoPath,
-            icLoraConditioningType: submission.input.conditioningType,
-            icLoraConditioningStrength: submission.input.conditioningStrength,
-          },
-          takes: [{ url: finalUrl, path: finalPath, createdAt: Date.now() }],
-          activeTakeIndex: 0,
-        })
-      }
-
-      setActiveIcLoraSource(null)
-    })()
-  }, [icLoraResult, isIcLoraGenerating, currentProjectId, currentProject?.assets, activeIcLoraSource, addAsset, addTakeToAsset, setPendingIcLoraUpdate])
-  
-  // When image generation/editing completes, add all images to project assets
-  useEffect(() => {
-    if (imageUrls.length > 0 && currentProjectId && !isGenerating) {
-      const genMode = 'text-to-image'
-      ;(async () => {
-        for (let i = 0; i < imageUrls.length; i++) {
-          const imageUrl = imageUrls[i]
-          const imgPath = imagePaths[i] || null
-          const exists = assets.some(a => a.url === imageUrl)
-          if (!exists) {
-            const copied = imgPath ? await copyToAssetFolder(imgPath, currentProjectId) : null
-            const finalPath = copied?.path ?? imgPath ?? imageUrl
-            const finalUrl = copied?.url ?? imageUrl
-            addAsset(currentProjectId, {
-              type: 'image',
-              path: finalPath,
-              url: finalUrl,
-              prompt: lastPrompt,
-              resolution: settings.imageResolution,
-              generationParams: {
-                mode: genMode,
-                prompt: lastPrompt,
-                model: 'fast',
-                duration: 5,
-                resolution: settings.imageResolution,
-                fps: 24,
-                audio: false,
-                cameraMotion: 'none',
-                imageAspectRatio: settings.aspectRatio,
-                imageSteps: 4,
-              },
-              takes: [{
-                url: finalUrl,
-                path: finalPath,
-                createdAt: Date.now(),
-              }],
-              activeTakeIndex: 0,
-            })
-          }
-        }
-      })()
-    }
-  }, [imageUrls, imagePaths, currentProjectId, isGenerating])
-  
-  const handleGenerate = async () => {
-    if (mode === 'ic-lora') {
-      if (!prompt.trim() || !icLoraInput.videoPath || !icLoraInput.ready) return
-      icLoraSubmissionRef.current = {
-        prompt,
-        input: {
-          videoPath: icLoraInput.videoPath,
-          conditioningType: icLoraCondType,
-          conditioningStrength: icLoraStrength,
-        },
-      }
-      await submitIcLora({
-        videoPath: icLoraInput.videoPath,
-        conditioningType: icLoraCondType,
-        conditioningStrength: icLoraStrength,
-        prompt,
+    if (genSpaceIcLoraSource) {
+      setIcLoraInitial({
+        videoUrl: genSpaceIcLoraSource.videoUrl,
+        videoPath: genSpaceIcLoraSource.videoPath,
       })
-      return
+      setMode('ic-lora')
+      setGenSpaceIcLoraSource(null)
+      setIcLoraPanelKey((prev) => prev + 1)
     }
+  }, [genSpaceIcLoraSource, setGenSpaceIcLoraSource])
+
+  // Effect to handle generation completion
+  useEffect(() => {
+    if (!isGenerating && videoUrl && videoPath && currentProjectId) {
+      // Prevent duplicate adds if useEffect triggers again
+      if (persistedVideoKeyRef.current === videoUrl) return
+      persistedVideoKeyRef.current = videoUrl
+
+      const resolution = mode === 'image' ? settings.imageResolution : settings.videoResolution
+      const duration = mode === 'image' ? undefined : settings.duration
+
+      addAsset(currentProjectId, {
+        type: mode === 'image' ? 'image' : 'video',
+        url: videoUrl,
+        path: videoPath,
+        prompt: prompt,
+        resolution,
+        duration,
+      })
+    }
+  }, [isGenerating, videoUrl, videoPath, currentProjectId, addAsset, prompt, settings, mode])
+
+  // Handle multiple images from variations
+  useEffect(() => {
+    if (!isGenerating && imageUrls.length > 0 && imagePaths.length > 0 && currentProjectId && mode === 'image') {
+      if (persistedVideoKeyRef.current === imageUrls[0]) return
+      persistedVideoKeyRef.current = imageUrls[0]
+
+      imageUrls.forEach((url, i) => {
+        addAsset(currentProjectId, {
+          type: 'image',
+          url: url,
+          path: imagePaths[i],
+          prompt: prompt,
+          resolution: settings.imageResolution,
+        })
+      })
+    }
+  }, [isGenerating, imageUrls, imagePaths, currentProjectId, addAsset, prompt, settings, mode])
+
+  // Handle retake completion
+  useEffect(() => {
+    if (retakeStatus === 'complete' && retakeResult?.videoPath && currentProjectId && retakeSubmissionRef.current) {
+      const { videoPath: resPath } = retakeResult
+      const normalized = resPath.replace(/\\/g, '/')
+      const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+      
+      const { input } = retakeSubmissionRef.current
+      
+      if (activeRetakeSource && activeRetakeSource.assetId) {
+        addTakeToAsset(currentProjectId, activeRetakeSource.assetId, {
+          url: fileUrl,
+          path: resPath,
+          createdAt: Date.now(),
+        })
+      } else {
+        addAsset(currentProjectId, {
+          type: 'video',
+          url: fileUrl,
+          path: resPath,
+          prompt: retakeSubmissionRef.current.prompt,
+          resolution: settings.videoResolution,
+          duration: input.videoDuration,
+        })
+      }
+      
+      setPendingRetakeUpdate({ assetId: activeRetakeSource?.assetId || '', clipIds: activeRetakeSource?.linkedClipIds || [], newTakeIndex: -1 })
+      retakeSubmissionRef.current = null
+      resetRetake()
+    }
+  }, [retakeStatus, retakeResult, currentProjectId, addAsset, addTakeToAsset, activeRetakeSource, settings.videoResolution, setPendingRetakeUpdate, resetRetake])
+
+  // Handle IC-LoRA completion
+  useEffect(() => {
+    if (icLoraStatus === 'complete' && icLoraResult?.videoPath && currentProjectId && icLoraSubmissionRef.current) {
+      const { videoPath: resPath } = icLoraResult
+      const normalized = resPath.replace(/\\/g, '/')
+      const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+      
+      const { prompt: subPrompt } = icLoraSubmissionRef.current
+      
+      addAsset(currentProjectId, {
+        type: 'video',
+        url: fileUrl,
+        path: resPath,
+        prompt: subPrompt,
+        resolution: settings.videoResolution,
+        duration: settings.duration,
+      })
+      
+      setPendingIcLoraUpdate({ assetId: '', clipIds: [], newTakeIndex: -1 })
+      icLoraSubmissionRef.current = null
+      resetIcLora()
+    }
+  }, [icLoraStatus, icLoraResult, currentProjectId, addAsset, settings.videoResolution, settings.duration, setPendingIcLoraUpdate, resetIcLora])
+
+  const handleGenerate = async () => {
+    if (!prompt.trim() && mode !== 'retake' && mode !== 'ic-lora') return
 
     if (mode === 'retake') {
-      if (!retakeInput.videoPath || retakeInput.duration < 2) return
-      retakeSubmissionRef.current = {
-        prompt,
-        input: {
-          videoPath: retakeInput.videoPath,
-          startTime: retakeInput.startTime,
-          duration: retakeInput.duration,
-          videoDuration: retakeInput.videoDuration,
-        },
+      if (!retakeInput.ready || !retakeInput.videoPath) {
+        setLocalError('Please select a video and trim range first.')
+        return
       }
-      await submitRetake({
+      retakeSubmissionRef.current = { prompt, input: retakeInput }
+      submitRetake({
         videoPath: retakeInput.videoPath,
+        prompt,
         startTime: retakeInput.startTime,
         duration: retakeInput.duration,
-        prompt,
         mode: 'replace_audio_and_video',
       })
       return
     }
 
-    if (!prompt.trim()) return
-
-    // Save the prompt before generation starts
-    setLastPrompt(prompt)
+    if (mode === 'ic-lora') {
+      if (!icLoraInput.ready || !icLoraInput.videoPath) {
+        setLocalError('Please select a reference video first.')
+        return
+      }
+      icLoraSubmissionRef.current = { prompt, input: { ...icLoraInput, videoPath: icLoraInput.videoPath! } }
+      submitIcLora({
+        videoPath: icLoraInput.videoPath,
+        prompt,
+        conditioningType: icLoraInput.conditioningType,
+        conditioningStrength: icLoraInput.conditioningStrength,
+      })
+      return
+    }
 
     if (mode === 'image') {
       generateImage(
@@ -1400,10 +1123,9 @@ export function GenSpace() {
         selectedWorkflowId || undefined
       )
     } else {
-      // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
-      // Extract filesystem path from the file:// URL for the backend
-      const imagePath = inputImage ? fileUrlToPath(inputImage) : null
-      const audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+      let imagePath = inputImage ? fileUrlToPath(inputImage) : null
+      let audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+      
       const videoSettings = applyForcedVideoSettings(settings)
       if (audioPath) videoSettings.model = 'pro'
 
@@ -1434,274 +1156,192 @@ export function GenSpace() {
     }
   }
   
-  const handleDragStart = (e: React.DragEvent, asset: Asset) => {
-    e.dataTransfer.setData('asset', JSON.stringify(asset))
-    e.dataTransfer.setData('assetId', asset.id)
-    e.dataTransfer.effectAllowed = 'copy'
-  }
-  
-  const handleCreateVideo = (imageAsset: Asset) => {
-    setMode('video')
-    setInputImage(imageAsset.url)
-    setPrompt(`${imageAsset.prompt || 'The scene comes to life...'}`)
+  const handleSelectAsset = (asset: Asset) => {
+    setSelectedAsset(asset)
   }
 
-  const handleRetake = (videoAsset: Asset) => {
-    setMode('retake')
-    setPrompt('')
-    setActiveRetakeSource(null)
-    setRetakeInitial({
-      videoUrl: videoAsset.url,
-      videoPath: videoAsset.path,
-      duration: videoAsset.duration,
-    })
-    setRetakePanelKey((prev) => prev + 1)
-  }
-
-  const handleIcLora = (videoAsset: Asset) => {
-    if (forceApiGenerations) return
-    setMode('ic-lora')
-    setPrompt('')
-    setActiveIcLoraSource(null)
-    setIcLoraInitial({ videoUrl: videoAsset.url, videoPath: videoAsset.path })
-    setIcLoraPanelKey((prev) => prev + 1)
-  }
-
-  const isRetakeMode = mode === 'retake'
-  const isIcLoraMode = mode === 'ic-lora'
-  const canSubmit = isRetakeMode
-    ? retakeInput.ready && !!retakeInput.videoPath && !isRetaking
-    : isIcLoraMode
-      ? !!prompt.trim() && icLoraInput.ready && !!icLoraInput.videoPath && !isIcLoraGenerating
-      : !!prompt.trim()
-  const promptButtonLabel = isRetakeMode ? 'Retake' : isIcLoraMode ? 'Generate' : 'Generate'
-  const promptButtonIcon = isRetakeMode
-    ? <Scissors className="h-3.5 w-3.5" />
-    : isIcLoraMode
-      ? <Sparkles className="h-3.5 w-3.5" />
-    : <Sparkles className={`h-3.5 w-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
-  const promptGenerating = isRetakeMode ? isRetaking : isIcLoraMode ? isIcLoraGenerating : isGenerating
-  
-  // Close size menu on click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (sizeMenuRef.current && !sizeMenuRef.current.contains(e.target as Node)) {
-        setShowSizeMenu(false)
-      }
-    }
-    if (showSizeMenu) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showSizeMenu])
-
-  const filteredAssets = showFavorites ? assets.filter(a => a.favorite) : assets
-  const favoriteCount = assets.filter(a => a.favorite).length
-  const isLibraryMode = mode === 'video' || mode === 'image'
-
-  // Navigation for the asset preview modal
-  const selectedIndex = selectedAsset ? filteredAssets.findIndex(a => a.id === selectedAsset.id) : -1
-  const canGoPrev = selectedIndex > 0
-  const canGoNext = selectedIndex >= 0 && selectedIndex < filteredAssets.length - 1
-
-  const goToPrev = useCallback(() => {
-    if (canGoPrev) setSelectedAsset(filteredAssets[selectedIndex - 1])
-  }, [canGoPrev, filteredAssets, selectedIndex])
-
-  const goToNext = useCallback(() => {
-    if (canGoNext) setSelectedAsset(filteredAssets[selectedIndex + 1])
-  }, [canGoNext, filteredAssets, selectedIndex])
-
-  // Keyboard navigation for the preview modal
-  useEffect(() => {
+  const goToNext = () => {
     if (!selectedAsset) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrev() }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); goToNext() }
-      else if (e.key === 'Escape') setSelectedAsset(null)
+    const index = filteredAssets.findIndex(a => a.id === selectedAsset.id)
+    if (index < filteredAssets.length - 1) {
+      setSelectedAsset(filteredAssets[index + 1])
     }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [selectedAsset, goToPrev, goToNext])
+  }
+
+  const goToPrev = () => {
+    if (!selectedAsset) return
+    const index = filteredAssets.findIndex(a => a.id === selectedAsset.id)
+    if (index > 0) {
+      setSelectedAsset(filteredAssets[index - 1])
+    }
+  }
+
+  const filteredAssets = (currentProject?.assets || [])
+    .filter(a => !showFavorites || a.favorite)
+    .sort((a, b) => b.createdAt - a.createdAt)
+
+  const selectedIndex = selectedAsset ? filteredAssets.findIndex(a => a.id === selectedAsset.id) : -1
+  const canGoNext = selectedIndex < filteredAssets.length - 1
+  const canGoPrev = selectedIndex > 0
+
+  const promptGenerating = isGenerating || isRetaking || isIcLoraGenerating
+  const promptButtonLabel = isRetaking ? 'Retaking...' : isIcLoraGenerating ? 'Applying LoRA...' : mode === 'image' ? 'Generate Image' : 'Generate Video'
+  const promptButtonIcon = promptGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />
+  const canSubmit = mode === 'retake' ? retakeInput.ready : mode === 'ic-lora' ? icLoraInput.ready : true
+
+  const icLoraCondType = icLoraInput.conditioningType
+  const setIcLoraCondType = (type: ICLoraConditioningType) => setIcLoraInput(prev => ({ ...prev, conditioningType: type }))
+  const icLoraStrength = icLoraInput.conditioningStrength
+  const setIcLoraStrength = (strength: number) => setIcLoraInput(prev => ({ ...prev, conditioningStrength: strength }))
+
+  const combinedStatusMessage = statusMessage || retakeStatus || icLoraStatus
 
   return (
-    <div className="h-full relative bg-zinc-950">
-
-      {/* Empty state */}
-      {isLibraryMode && assets.length === 0 && !isGenerating && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-          <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-zinc-700 flex items-center justify-center mb-4">
-            <Sparkles className="h-10 w-10 text-zinc-600" />
-          </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Start Creating</h3>
-          <p className="text-zinc-500 max-w-md">
-            Use the prompt bar below to generate images and videos.
-            Drag assets into the input box to use them as references.
-          </p>
-        </div>
-      )}
-
-      {/* No favorites empty state */}
-      {isLibraryMode && showFavorites && filteredAssets.length === 0 && assets.length > 0 && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-          <Heart className="h-12 w-12 text-zinc-700 mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">No favorites yet</h3>
-          <p className="text-zinc-500 text-sm">
-            Click the heart icon on any asset to add it to your favorites.
-          </p>
-        </div>
-      )}
-
-      {/* Assets area — full width, no background, above the prompt bar */}
-      {isLibraryMode && (assets.length > 0 || isGenerating) && (
-        <div className="absolute inset-x-0 top-0 bottom-[160px] flex flex-col px-4 pt-4">
-          {/* Top bar */}
-          <div className="flex items-center justify-end pb-2 gap-2">
-            <button
-              onClick={() => setShowFavorites(!showFavorites)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                showFavorites
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-            >
-              <Heart className={`h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
-              Favorites
-              {favoriteCount > 0 && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                  showFavorites ? 'bg-red-500/30 text-red-300' : 'bg-zinc-800 text-zinc-500'
-                }`}>
-                  {favoriteCount}
-                </span>
-              )}
-            </button>
-
-            <div ref={sizeMenuRef} className="relative">
+    <div className="flex flex-col h-full bg-black text-white overflow-hidden">
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-h-0 relative">
+        {/* Gallery Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50 bg-zinc-900/30 backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-bold tracking-tight">Project Library</h2>
+            <div className="flex bg-zinc-800/50 p-1 rounded-lg">
               <button
-                onClick={() => setShowSizeMenu(!showSizeMenu)}
-                className={`p-2 rounded-md transition-colors ${
-                  showSizeMenu ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                onClick={() => setShowFavorites(false)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                  !showFavorites ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                {gallerySize === 'small' ? <GridSmallIcon className="h-4 w-4" /> :
-                 gallerySize === 'medium' ? <GridMediumIcon className="h-4 w-4" /> :
-                 <GridLargeIcon className="h-4 w-4" />}
+                All Assets
               </button>
+              <button
+                onClick={() => setShowFavorites(true)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                  showFavorites ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Favorites
+              </button>
+            </div>
+          </div>
 
+          <div className="flex items-center gap-3">
+            {/* Gallery Size Selector */}
+            <div className="relative" ref={sizeMenuRef}>
+              <button
+                onClick={() => setShowSizeMenu(!showSizeMenu)}
+                className="p-2 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all border border-zinc-700/50"
+                title="Gallery view size"
+              >
+                {gallerySize === 'small' ? <GridSmallIcon className="h-4 w-4" /> : gallerySize === 'medium' ? <GridMediumIcon className="h-4 w-4" /> : <GridLargeIcon className="h-4 w-4" />}
+              </button>
+              
               {showSizeMenu && (
-                <div className="absolute top-full mt-2 right-0 bg-zinc-800 border border-zinc-700 rounded-md p-2 min-w-[160px] shadow-xl z-50">
-                  {([
-                    { value: 'small' as GallerySize, label: 'Small', icon: GridSmallIcon },
-                    { value: 'medium' as GallerySize, label: 'Medium', icon: GridMediumIcon },
-                    { value: 'large' as GallerySize, label: 'Large', icon: GridLargeIcon },
-                  ]).map(option => (
+                <div className="absolute right-0 top-full mt-2 w-32 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden z-20 animate-in fade-in slide-in-from-top-1">
+                  {(['small', 'medium', 'large'] as GallerySize[]).map((s) => (
                     <button
-                      key={option.value}
-                      onClick={() => { setGallerySize(option.value); setShowSizeMenu(false) }}
-                      className={`w-full flex items-center justify-between px-2 py-2.5 rounded-md transition-colors text-left ${gallerySize === option.value ? 'bg-white/20 hover:bg-white/25' : 'hover:bg-zinc-700'}`}
+                      key={s}
+                      onClick={() => { setGallerySize(s); setShowSizeMenu(false) }}
+                      className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 transition-colors hover:bg-zinc-800 ${
+                        gallerySize === s ? 'text-blue-400 bg-blue-500/5' : 'text-zinc-400'
+                      }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <option.icon className={`h-4 w-4 ${gallerySize === option.value ? 'text-white' : 'text-zinc-500'}`} />
-                        <span className={`text-sm ${gallerySize === option.value ? 'text-white font-medium' : 'text-zinc-400'}`}>
-                          {option.label}
-                        </span>
-                      </div>
-                      {gallerySize === option.value && (
-                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
+                      {s === 'small' ? <GridSmallIcon className="h-3.5 w-3.5" /> : s === 'medium' ? <GridMediumIcon className="h-3.5 w-3.5" /> : <GridLargeIcon className="h-3.5 w-3.5" />}
+                      <span className="capitalize">{s}</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
           </div>
+        </div>
 
-          {/* Assets grid — fills remaining space, scrollable */}
-          <div className="overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable] flex-1">
-            <div className={`grid ${gallerySizeClasses[gallerySize]} gap-4`}>
-              {isGenerating && (
-                <div className="relative rounded-xl overflow-hidden bg-zinc-800 aspect-video">
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <div className="relative w-16 h-16 mb-3">
-                      <div className="absolute inset-0 rounded-full border-2 border-violet-500/30" />
-                      <div className="absolute inset-0 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-                      <div className="absolute inset-2 rounded-full bg-zinc-800 flex items-center justify-center">
-                        <Sparkles className="h-6 w-6 text-violet-400" />
-                      </div>
-                    </div>
-                    <p className="text-sm text-zinc-400">{statusMessage || 'Generating...'}</p>
-                    {progress > 0 && (
-                      <div className="w-32 h-1 bg-zinc-800 rounded-full mt-2 overflow-hidden">
-                        <div className="h-full bg-violet-500 transition-all" style={{ width: `${progress}%` }} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {filteredAssets.map(asset => (
+        {/* Assets Grid */}
+        <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
+          {filteredAssets.length > 0 ? (
+            <div className={`grid gap-4 ${gallerySizeClasses[gallerySize]}`}>
+              {filteredAssets.map((asset) => (
                 <AssetCard
                   key={asset.id}
                   asset={asset}
-                  onDelete={() => handleDelete(asset.id)}
-                  onPlay={() => setSelectedAsset(asset)}
-                  onDragStart={handleDragStart}
-                  onCreateVideo={handleCreateVideo}
-                  onRetake={handleRetake}
-                  onIcLora={!forceApiGenerations ? handleIcLora : undefined}
-                  onToggleFavorite={() => currentProjectId && toggleFavorite(currentProjectId, asset.id)}
+                  isSelected={selectedAsset?.id === asset.id}
+                  onSelect={handleSelectAsset}
+                  onDelete={handleDelete}
+                  onToggleFavorite={(id) => currentProjectId && toggleFavorite(currentProjectId, id)}
+                  onPlay={handleSelectAsset}
+                  onDragStart={(e, a) => {
+                    e.dataTransfer.setData('asset', JSON.stringify(a))
+                  }}
+                  size={gallerySize}
                 />
               ))}
             </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-4">
+              <div className="p-6 rounded-full bg-zinc-900/50 border border-zinc-800/50">
+                <Video className="h-12 w-12 opacity-20" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-zinc-400">Your library is empty</p>
+                <p className="text-xs">Use the prompt bar below to generate images and videos.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Active Tool Panels (Retake / IC-LoRA) */}
+        {mode === 'retake' && (
+          <div className="px-6 pb-4 animate-in slide-in-from-bottom-4">
+            <RetakePanel
+              key={retakePanelKey}
+              initialVideoUrl={retakeInitial.videoUrl}
+              initialVideoPath={retakeInitial.videoPath}
+              initialDuration={retakeInitial.duration}
+              onChange={(data) => setRetakeInput({ ...data, ready: true })}
+            />
           </div>
-        </div>
-      )}
+        )}
 
-      {mode === 'retake' && (
-        <div className="absolute inset-x-0 top-0 bottom-[160px] px-4 pt-4 pb-4 flex flex-col overflow-hidden">
-          <RetakePanel
-            initialVideoUrl={retakeInitial.videoUrl}
-            initialVideoPath={retakeInitial.videoPath}
-            initialDuration={retakeInitial.duration}
-            resetKey={retakePanelKey}
-            fillHeight
-            isProcessing={isRetaking}
-            processingStatus={retakeStatus}
-            onChange={(data) => setRetakeInput(data)}
-          />
-        </div>
-      )}
+        {mode === 'ic-lora' && (
+          <div className="px-6 pb-4 animate-in slide-in-from-bottom-4">
+            <ICLoraPanel
+              key={icLoraPanelKey}
+              initialVideoUrl={icLoraInitial.videoUrl}
+              initialVideoPath={icLoraInitial.videoPath}
+              onChange={(data) => setIcLoraInput(prev => ({ ...prev, videoUrl: data.videoUrl, videoPath: data.videoPath, ready: true }))}
+            />
+          </div>
+        )}
 
-      {mode === 'ic-lora' && !forceApiGenerations && (
-        <div className="absolute inset-x-0 top-0 bottom-[160px] px-4 pt-4 pb-4 flex flex-col overflow-hidden">
-          <ICLoraPanel
-            initialVideoUrl={icLoraInitial.videoUrl}
-            initialVideoPath={icLoraInitial.videoPath}
-            resetKey={icLoraPanelKey}
-            fillHeight
-            isProcessing={isIcLoraGenerating}
-            processingStatus={icLoraStatus}
-            conditioningType={icLoraCondType}
-            onConditioningTypeChange={setIcLoraCondType}
-            conditioningStrength={icLoraStrength}
-            onConditioningStrengthChange={setIcLoraStrength}
-            outputVideoUrl={icLoraResult?.videoUrl || null}
-            outputVideoPath={icLoraResult?.videoPath || null}
-            onChange={setIcLoraInput}
-          />
-        </div>
-      )}
+        {/* Global Progress Bar (Floating) */}
+        {promptGenerating && (
+          <div className="absolute bottom-[100px] left-1/2 -translate-x-1/2 w-[400px] z-20">
+            <div className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-700/50 rounded-2xl p-4 shadow-2xl">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                  <span className="text-xs font-medium text-zinc-200">{combinedStatusMessage || 'Processing...'}</span>
+                </div>
+                <span className="text-[10px] font-bold text-blue-400">{Math.round(progress)}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500 transition-all duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* Floating prompt panel — wider, responsive, centered */}
-      <div className="absolute bottom-5 left-1/2 w-[min(700px,calc(100%-2rem))] -translate-x-1/2">
-
-        <FreeApiKeyBubble
+      {/* Control area */}
+      <div className="p-6 pt-2 bg-zinc-900/50 border-t border-zinc-800/50 backdrop-blur-md">
+        <FreeApiKeyBubble 
           forceApiGenerations={forceApiGenerations}
           hasLtxApiKey={appSettings.hasLtxApiKey}
-          isGenerating={isGenerating}
+          isGenerating={promptGenerating}
         />
-
+        
         {/* Prompt bar */}
         <PromptBar
           mode={mode}
@@ -1729,6 +1369,7 @@ export function GenSpace() {
           onWorkflowSelect={(id) => {
             setSelectedWorkflowId(id)
           }}
+          comfyWorkflows={comfyWorkflows}
         />
       </div>
       

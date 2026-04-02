@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+import copy
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
@@ -214,8 +215,7 @@ class ImageGenerationHandler(StateHandlerBase):
         workflow_params: dict[str, Any] | None,
     ) -> GenerateImageResponse:
         from services.comfyui.comfyui_client import ComfyUIClient
-        from services.comfyui.workflow_parser import get_workflow
-        import copy
+        from services.comfyui.workflow_parser import get_workflow, get_available_workflows
 
         generation_id = uuid.uuid4().hex[:8]
         output_paths: list[Path] = []
@@ -226,47 +226,70 @@ class ImageGenerationHandler(StateHandlerBase):
             self._generation.start_api_generation(generation_id)
             self._generation.update_progress("validating_request", 5, None, None)
             
-            base_workflow = get_workflow(workflow_id)
-            if not base_workflow:
-                raise HTTPError(404, f"ComfyUI workflow '{workflow_id}' not found.")
+            # Find the workflow and its ui_mapping
+            all_workflows: list[dict[str, Any]] = get_available_workflows()
+            wf_meta = next((w for w in all_workflows if w["id"] == workflow_id), None)
+            if not wf_meta:
+                raise HTTPError(404, f"ComfyUI workflow '{workflow_id}' not found or has no valid ui_mapping.")
 
-            ui_mapping = base_workflow.get("ui_mapping", {})
+            ui_mapping: dict[str, dict[str, str]] = wf_meta.get("ui_mapping", {})
             required_fields = ["prompt", "seed", "width", "height", "num_inference_steps"]
             for field in required_fields:
                 if field not in ui_mapping:
-                    raise HTTPError(400, f"Workflow '{workflow_id}' is missing required UI mapping: {field}")
+                    raise HTTPError(400, f"Workflow '{workflow_id}' is missing required UI mapping for: {field}")
+
+            # Load the full graph JSON
+            graph_data = get_workflow(workflow_id)
+            if not graph_data:
+                raise HTTPError(404, f"Could not load workflow JSON for '{workflow_id}'.")
+
+            # Convert Graph format to API format (flat dict keyed by string node ID)
+            api_workflow: dict[str, Any] = {}
+            nodes = graph_data.get("nodes", [])
+            for node in nodes:
+                node_id = str(node["id"])
+                api_workflow[node_id] = {
+                    "class_type": node["type"],
+                    "inputs": node.get("inputs", {})
+                }
 
             for idx in range(num_images):
                 if self._generation.is_generation_cancelled():
                     raise RuntimeError("Generation was cancelled")
 
-                workflow = copy.deepcopy(base_workflow)
-                # Cleanup metadata before submission
-                workflow.pop("ui_mapping", None)
-                workflow.pop("proxyWidgets", None)
+                # Copy the base API workflow for patching
+                current_workflow: dict[str, Any] = copy.deepcopy(api_workflow)
                 
-                try:
-                    def set_input(map_key: str, value: Any) -> None:
-                        mapping = ui_mapping[map_key]
-                        workflow[mapping["node"]]["inputs"][mapping["field"]] = value
+                def set_input(ltx_key: str, value: Any) -> None:
+                    mapping = ui_mapping[ltx_key]
+                    node_id = str(mapping["node"])
+                    field = mapping["field"]
+                    if node_id in current_workflow:
+                        current_workflow[node_id]["inputs"][field] = value
+                    else:
+                        logger.warning(f"Target node {node_id} not found in workflow {workflow_id}")
 
+                try:
                     set_input("prompt", prompt)
                     set_input("seed", seed + idx)
                     set_input("width", width)
                     set_input("height", height)
                     set_input("num_inference_steps", num_inference_steps)
                     
+                    if "guidance_scale" in ui_mapping:
+                        set_input("guidance_scale", 8.0) # Standard default
+
                     # Apply optional overrides from workflow_params if present
                     if workflow_params:
                         for key, val in workflow_params.items():
                             if key in ui_mapping:
                                 set_input(key, val)
 
-                except KeyError as e:
-                    raise HTTPError(500, f"Invalid UI mapping in workflow JSON: {e}")
+                except Exception as e:
+                    raise HTTPError(500, f"Error patching workflow JSON: {e}")
 
                 self._generation.update_progress("inference", 15 + int((idx / num_images) * 60), None, None)
-                prompt_res = client.prompt(workflow)
+                prompt_res = client.prompt(current_workflow)
                 prompt_id = prompt_res.get("prompt_id")
                 if not prompt_id:
                     raise RuntimeError("ComfyUI did not return a prompt_id")
