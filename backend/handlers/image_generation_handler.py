@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from _routes._errors import HTTPError
 from api_types import GenerateImageRequest, GenerateImageResponse
@@ -54,6 +54,17 @@ class ImageGenerationHandler(StateHandlerBase):
             logger.info("Using locked seed for image: %s", seed)
         else:
             seed = int(time.time()) % 2147483647
+
+        if settings.generation_backend == "comfyui":
+            return self._generate_via_comfyui(
+                prompt=req.prompt,
+                width=width,
+                height=height,
+                num_inference_steps=req.numSteps,
+                seed=seed,
+                num_images=num_images,
+                workflow_params=req.workflow_params,
+            )
 
         if self.config.force_api_generations:
             return self._generate_via_api(
@@ -179,6 +190,90 @@ class ImageGenerationHandler(StateHandlerBase):
                 output_path = self.config.outputs_dir / f"zit_api_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
                 output_path.write_bytes(image_bytes)
                 output_paths.append(output_path)
+
+            self._generation.update_progress("complete", 100, None, None)
+            self._generation.complete_generation([str(path) for path in output_paths])
+            return GenerateImageResponse(status="complete", image_paths=[str(path) for path in output_paths])
+        except HTTPError as e:
+            self._generation.fail_generation(e.detail)
+            raise
+        except Exception as e:
+            self._generation.fail_generation(str(e))
+            if "cancelled" in str(e).lower():
+                for path in output_paths:
+                    path.unlink(missing_ok=True)
+                logger.info("Image generation cancelled by user")
+                return GenerateImageResponse(status="cancelled")
+            raise HTTPError(500, str(e)) from e
+
+    def _generate_via_comfyui(
+        self,
+        *,
+        prompt: str,
+        width: int,
+        height: int,
+        num_inference_steps: int,
+        seed: int,
+        num_images: int,
+        workflow_params: dict[str, Any] | None,
+    ) -> GenerateImageResponse:
+        from services.comfyui.comfyui_client import ComfyUIClient
+        from services.comfyui.workflow_parser import get_workflow
+        import copy
+
+        generation_id = uuid.uuid4().hex[:8]
+        output_paths: list[Path] = []
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        client = ComfyUIClient()
+
+        try:
+            self._generation.start_api_generation(generation_id) # Reuse API tracking which bypasses local GPU slot
+            self._generation.update_progress("validating_request", 5, None, None)
+            
+            base_workflow = get_workflow("image_generation")
+            if not base_workflow:
+                raise HTTPError(500, "ComfyUI workflow 'image_generation' not found.")
+
+            for idx in range(num_images):
+                if self._generation.is_generation_cancelled():
+                    raise RuntimeError("Generation was cancelled")
+
+                workflow = copy.deepcopy(base_workflow)
+                proxy_widgets = workflow.pop("proxyWidgets", {})
+                
+                try:
+                    workflow[proxy_widgets["prompt"]["node"]]["inputs"][proxy_widgets["prompt"]["field"]] = prompt
+                    workflow[proxy_widgets["seed"]["node"]]["inputs"][proxy_widgets["seed"]["field"]] = seed + idx
+                    workflow[proxy_widgets["width"]["node"]]["inputs"][proxy_widgets["width"]["field"]] = width
+                    workflow[proxy_widgets["height"]["node"]]["inputs"][proxy_widgets["height"]["field"]] = height
+                    workflow[proxy_widgets["num_inference_steps"]["node"]]["inputs"][proxy_widgets["num_inference_steps"]["field"]] = num_inference_steps
+                except KeyError as e:
+                    raise HTTPError(500, f"Invalid proxyWidgets mapping in workflow: {e}")
+
+                self._generation.update_progress("inference", 15 + int((idx / num_images) * 60), None, None)
+                prompt_res = client.prompt(workflow)
+                prompt_id = prompt_res.get("prompt_id")
+                if not prompt_id:
+                    raise RuntimeError("ComfyUI did not return a prompt_id")
+                
+                outputs = {}
+                while True:
+                    if self._generation.is_generation_cancelled():
+                        raise RuntimeError("Generation was cancelled")
+                    history = client.get_history(prompt_id)
+                    if prompt_id in history:
+                        outputs = history[prompt_id].get("outputs", {})
+                        break
+                    time.sleep(1)
+
+                self._generation.update_progress("downloading_output", 75 + int(((idx + 1) / num_images) * 20), None, None)
+                for _node_id, node_output in outputs.items():
+                    if "images" in node_output:
+                        for img_meta in node_output["images"]:
+                            image_bytes = client.view_image(img_meta["filename"], img_meta.get("subfolder", ""), img_meta.get("type", ""))
+                            output_path = self.config.outputs_dir / f"comfyui_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+                            output_path.write_bytes(image_bytes)
+                            output_paths.append(output_path)
 
             self._generation.update_progress("complete", 100, None, None)
             self._generation.complete_generation([str(path) for path in output_paths])

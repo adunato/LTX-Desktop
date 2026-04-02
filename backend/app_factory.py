@@ -23,6 +23,7 @@ from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.settings import router as settings_router
+from _routes.workflows import router as workflows_router
 from logging_policy import log_http_error, log_unhandled_exception
 from state import init_state_service
 
@@ -116,5 +117,7 @@ def create_app(
     app.include_router(retake_router)
     app.include_router(ic_lora_router)
     app.include_router(runtime_policy_router)
+    app.include_router(workflows_router)
 
+    return app
     return app

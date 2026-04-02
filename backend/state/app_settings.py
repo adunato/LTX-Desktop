@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, TypeGuard, TypeVar, cast, get_args
+from typing import Any, Literal, TypeGuard, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
@@ -60,6 +60,7 @@ class ProModelSettings(SettingsBaseModel):
 
 
 class AppSettings(SettingsBaseModel):
+    generation_backend: Literal["local", "comfyui"] = "local"
     use_torch_compile: bool = False
     load_on_startup: bool = False
     ltx_api_key: str = ""
@@ -132,6 +133,7 @@ UpdateSettingsRequest = AppSettingsPatch
 
 
 class SettingsResponse(SettingsBaseModel):
+    generation_backend: Literal["local", "comfyui"] = "local"
     use_torch_compile: bool = False
     load_on_startup: bool = False
     has_ltx_api_key: bool = False

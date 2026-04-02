@@ -180,6 +180,12 @@ class CpuSlot:
     active_pipeline: ImageGenerationPipeline
 
 
+@dataclass
+class ComfyUIJobSlot:
+    job_id: str | None
+    generation: GenerationState | None
+
+
 # ============================================================
 # Startup lifecycle
 # ============================================================
@@ -226,3 +232,4 @@ class AppState:
     startup: StartupState
     app_settings: AppSettings
     completed_download_sessions: dict[str, str] = field(default_factory=lambda: {})
+    comfyui_job: ComfyUIJobSlot | None = None

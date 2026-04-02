@@ -181,8 +181,6 @@ def _resolve_force_api_generations() -> bool:
     return force_api_generations
 
 
-import os
-
 FORCE_API_GENERATIONS = _resolve_force_api_generations()
 _BYPASS_MODEL_CHECK = os.environ.get("LTX_BYPASS_MODEL_CHECK") == "1"
 
