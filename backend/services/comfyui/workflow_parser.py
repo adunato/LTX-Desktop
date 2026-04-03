@@ -76,7 +76,7 @@ def get_available_workflows() -> list[dict[str, Any]]:
             ui_mapping: dict[str, dict[str, str]] = {}
             all_inputs = []
             
-            nodes = data.get("nodes", [])
+            nodes = data.get("nodes")
             if isinstance(nodes, list):
                 # Graph Format
                 for node in nodes:
