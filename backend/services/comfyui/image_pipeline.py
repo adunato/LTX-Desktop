@@ -45,6 +45,14 @@ class ComfyUIImagePipeline:
         # 3. Convert to API format
         api_workflow: dict[str, Any] = {}
         nodes = graph_data.get("nodes")
+        
+        def _normalize_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+            normalized = copy.deepcopy(inputs)
+            for k, v in normalized.items():
+                if isinstance(v, list) and len(v) == 2 and isinstance(v[0], (int, str)):
+                    v[0] = str(v[0])
+            return normalized
+
         if isinstance(nodes, list):
             # Graph format
             for node in nodes:
@@ -56,7 +64,7 @@ class ComfyUIImagePipeline:
                 node_id = str(node["id"])
                 api_workflow[node_id] = {
                     "class_type": node_type,
-                    "inputs": node.get("inputs", {})
+                    "inputs": _normalize_inputs(node.get("inputs", {}))
                 }
         else:
             # API format
@@ -66,9 +74,9 @@ class ComfyUIImagePipeline:
                 node_type = node.get("class_type", "")
                 if node_type == "LTX_UI_Group":
                     continue
-                api_workflow[node_id] = {
+                api_workflow[str(node_id)] = {
                     "class_type": node_type,
-                    "inputs": node.get("inputs", {})
+                    "inputs": _normalize_inputs(node.get("inputs", {}))
                 }
 
         # 4. Patch Workflow
