@@ -56,15 +56,15 @@ This plan outlines the steps required to implement the ComfyUI integration descr
 > See `change-requests/CR003-comfyui-video-generation/IMPLEMENTATION_PLAN.md` for full documentation.
 
 **Summary (COMPLETED):**
-1.  **Backend: Video Adapters:**
+1.  **Backend: Video Adapters (COMPLETED):**
     *   Implemented `ComfyUIVideoPipeline` for T2V/I2V generation.
     *   Implemented `ComfyUIA2VPipeline` for audio-to-video generation.
     *   Added multipart asset upload support (image/audio) to ComfyUI client.
     *   Added `view_video()` method to ComfyUI client for video downloads.
-2.  **Frontend: Video Journey:**
+2.  **Frontend: Video Journey (COMPLETED):**
     *   Integrated into Video tab's MODEL dropdown (already supported via `pipeline === 'video_gen'` filter).
     *   Added routing in `VideoGenerationHandler.generate()` to detect `workflow_id` and route to ComfyUI pipelines.
-3.  **Validation:**
+3.  **Validation (COMPLETED):**
     *   Created sample video workflow JSON files (`ltx_video_t2v.json`, `ltx_video_a2v.json`).
     *   All backend tests pass (262 passed).
     *   Type checks pass with pyright strict mode.
