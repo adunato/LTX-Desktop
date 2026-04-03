@@ -27,7 +27,7 @@ STANDARD_LTX_KEYS = {
 }
 
 PIPELINE_REQUIRED_KEYS = {
-    "image_gen": ["prompt", "seed", "height", "width", "num_inference_steps"],
+    "image_gen": ["prompt", "seed", "height", "width"],
     "video_gen": ["prompt", "seed", "height", "width", "num_frames", "frame_rate"],
     "retake": ["video_path", "mask_path", "prompt", "seed", "start_time", "end_time"],
     "ic_lora": ["prompt", "seed", "height", "width", "num_frames", "frame_rate"],

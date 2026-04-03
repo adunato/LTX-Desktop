@@ -33,8 +33,15 @@ const FIELD_LABELS: Record<string, string> = {
   end_time: 'End Time',
 }
 
-const REQUIRED_FIELDS: Record<string, string[]> = {
+const PIPELINE_FIELDS: Record<string, string[]> = {
   image_gen: ['prompt', 'seed', 'width', 'height', 'num_inference_steps'],
+  video_gen: ['prompt', 'seed', 'width', 'height', 'num_frames', 'frame_rate'],
+  retake: ['video_path', 'mask_path', 'prompt', 'seed', 'start_time', 'end_time'],
+  ic_lora: ['prompt', 'seed', 'height', 'width', 'num_frames', 'frame_rate'],
+}
+
+const REQUIRED_KEYS: Record<string, string[]> = {
+  image_gen: ['prompt', 'seed', 'width', 'height'],
   video_gen: ['prompt', 'seed', 'width', 'height', 'num_frames', 'frame_rate'],
   retake: ['video_path', 'mask_path', 'prompt', 'seed', 'start_time', 'end_time'],
   ic_lora: ['prompt', 'seed', 'height', 'width', 'num_frames', 'frame_rate'],
@@ -51,7 +58,7 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
 
   if (!isOpen) return null
 
-  const fields = REQUIRED_FIELDS[pipeline] || []
+  const fields = PIPELINE_FIELDS[pipeline] || []
 
   const handleMapField = (fieldKey: string, inputId: string) => {
     if (!inputId) {
@@ -112,7 +119,7 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
               <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">UI Mappings</label>
               <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 italic">
                 <AlertCircle className="h-3 w-3" />
-                Required for {PIPELINE_TYPES.find(p => p.id === pipeline)?.label}
+                Available fields for {PIPELINE_TYPES.find(p => p.id === pipeline)?.label}
               </div>
             </div>
 
@@ -123,7 +130,10 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
                 
                 return (
                   <div key={fieldKey} className="grid grid-cols-[1fr,1.5fr] items-center gap-4 p-3 rounded-xl bg-zinc-800/30 border border-zinc-800/50">
-                    <span className="text-xs font-medium text-zinc-300">{FIELD_LABELS[fieldKey] || fieldKey}</span>
+                    <span className="text-xs font-medium text-zinc-300">
+                      {FIELD_LABELS[fieldKey] || fieldKey}
+                      {!REQUIRED_KEYS[pipeline]?.includes(fieldKey) && <span className="text-zinc-500 font-normal ml-1.5">(Optional)</span>}
+                    </span>
                     <select
                       value={value}
                       onChange={(e) => handleMapField(fieldKey, e.target.value)}

@@ -16,10 +16,6 @@
     "height": {
       "node": "75:69",
       "field": "value"
-    },
-    "num_inference_steps": {
-      "node": "75:62",
-      "field": "steps"
     }
   }
 }
