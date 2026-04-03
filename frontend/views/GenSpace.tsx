@@ -12,6 +12,7 @@ import { useGeneration } from '../hooks/use-generation'
 import { backendFetch } from '../lib/backend'
 import { useRetake } from '../hooks/use-retake'
 import { useIcLora } from '../hooks/use-ic-lora'
+import { useComfyUI, type ComfyUIWorkflow } from '../contexts/ComfyUIContext'
 import type { ICLoraConditioningType } from '../components/ICLoraPanel'
 import type { Asset } from '../types/project'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
@@ -25,19 +26,6 @@ import {
 import { RetakePanel } from '../components/RetakePanel'
 import { ICLoraPanel, CONDITIONING_TYPES } from '../components/ICLoraPanel'
 import { FreeApiKeyBubble } from '../components/FreeApiKeyBubble'
-
-export interface ProxyWidget {
-  node: string
-  field: string
-}
-
-export interface ComfyUIWorkflow {
-  id: string
-  name: string
-  pipeline: string
-  ui_mapping: Record<string, ProxyWidget>
-  is_healthy: boolean
-}
 
 // Asset card with hover overlays
 function AssetCard({
@@ -618,8 +606,14 @@ function PromptBar({
               options={[
                 { value: 'native', label: 'Z-Image Turbo', icon: <ZitIcon className="h-3.5 w-3.5" /> },
                 ...comfyWorkflows
-                  .filter(w => w.pipeline === 'image_gen' && w.is_healthy)
-                  .map(w => ({ value: w.id, label: w.name, icon: <Sliders className="h-3.5 w-3.5 text-blue-400" /> }))
+                  .filter(w => w.pipeline === 'image_gen')
+                  .map(w => ({
+                    value: w.id,
+                    label: w.name,
+                    icon: <Sliders className={`h-3.5 w-3.5 ${w.is_healthy ? 'text-blue-400' : 'text-zinc-500'}`} />,
+                    disabled: !w.is_healthy,
+                    tooltip: w.is_healthy ? undefined : 'Mapping incomplete. Configure in Settings.'
+                  }))
               ]}
               trigger={
                 <>
@@ -695,7 +689,15 @@ function PromptBar({
                       { value: 'fast', label: 'LTX 2.3 Fast', icon: <LightricksIcon className="h-3.5 w-3.5" /> },
                     ]
                 ),
-                ...comfyWorkflows.map(w => ({ value: w.id, label: w.name, icon: <Sliders className="h-3.5 w-3.5 text-blue-400" /> }))
+                ...comfyWorkflows
+                  .filter(w => w.pipeline === 'video_gen')
+                  .map(w => ({
+                    value: w.id,
+                    label: w.name,
+                    icon: <Sliders className={`h-3.5 w-3.5 ${w.is_healthy ? 'text-blue-400' : 'text-zinc-500'}`} />,
+                    disabled: !w.is_healthy,
+                    tooltip: w.is_healthy ? undefined : 'Mapping incomplete. Configure in Settings.'
+                  }))
               ]}
               trigger={
                 <>
@@ -898,23 +900,7 @@ export function GenSpace() {
   const [activeRetakeSource, setActiveRetakeSource] = useState<GenSpaceRetakeSource | null>(null)
 
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
-  const [comfyWorkflows, setComfyWorkflows] = useState<ComfyUIWorkflow[]>([])
-
-  // Fetch available ComfyUI workflows
-  useEffect(() => {
-    const fetchWorkflows = async () => {
-      try {
-        const res = await backendFetch('/api/workflows')
-        if (res.ok) {
-          const data = await res.json()
-          setComfyWorkflows(data)
-        }
-      } catch (e) {
-        console.error('Failed to fetch workflows', e)
-      }
-    }
-    fetchWorkflows()
-  }, [])
+  const { workflows: comfyWorkflows } = useComfyUI()
 
   const {
     submitIcLora,

@@ -1,53 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Plus, Settings, Loader2, Upload, AlertCircle } from 'lucide-react'
 import { Button } from './ui/button'
 import { backendFetch } from '../lib/backend'
 import { ComfyUIMappingModal } from './ComfyUIMappingModal'
+import { useComfyUI, type ComfyUIWorkflow, type ProxyWidget } from '../contexts/ComfyUIContext'
 
-export interface ProxyWidget {
-  node: string
-  field: string
-}
-
-export interface ComfyUIWorkflow {
-  id: string
-  name: string
-  pipeline: string
-  ui_mapping: Record<string, ProxyWidget>
-  is_healthy: boolean
-  all_inputs: { id: string; label: string; node: string; field: string }[]
-}
+export type { ComfyUIWorkflow, ProxyWidget }
 
 export function ComfyUIWorkflowManager() {
-  const [workflows, setWorkflows] = useState<ComfyUIWorkflow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { workflows, isLoading: loading, refreshWorkflows } = useComfyUI()
   const [selectedWorkflow, setSelectedWorkflow] = useState<ComfyUIWorkflow | null>(null)
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const fetchWorkflows = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await backendFetch('/api/workflows')
-      if (res.ok) {
-        const data = await res.json()
-        setWorkflows(data)
-      } else {
-        setError('Failed to load workflows from server.')
-      }
-    } catch (e) {
-      console.error('Failed to fetch workflows', e)
-      setError('Connection error while fetching workflows.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchWorkflows()
-  }, [])
 
   const handleImport = async () => {
     const input = document.createElement('input')
@@ -68,7 +33,7 @@ export function ComfyUIWorkflowManager() {
           body: formData,
         })
         if (res.ok) {
-          await fetchWorkflows()
+          await refreshWorkflows()
         } else {
           try {
             const data = await res.json()
@@ -95,7 +60,7 @@ export function ComfyUIWorkflowManager() {
         body: JSON.stringify({ pipeline, ui_mapping: mapping }),
       })
       if (res.ok) {
-        await fetchWorkflows()
+        await refreshWorkflows()
         setIsMappingModalOpen(false)
       }
     } catch (e) {

@@ -4,6 +4,7 @@ import { backendFetch } from './lib/backend'
 import { ProjectProvider, useProjects } from './contexts/ProjectContext'
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext'
 import { AppSettingsProvider, useAppSettings } from './contexts/AppSettingsContext'
+import { ComfyUIProvider } from './contexts/ComfyUIContext'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { useBackend } from './hooks/use-backend'
 import { logger } from './lib/logger'
@@ -525,8 +526,10 @@ export default function App() {
     <ProjectProvider>
       <KeyboardShortcutsProvider>
         <AppSettingsProvider>
-          <AppContent />
-          <KeyboardShortcutsModal />
+          <ComfyUIProvider>
+            <AppContent />
+            <KeyboardShortcutsModal />
+          </ComfyUIProvider>
         </AppSettingsProvider>
       </KeyboardShortcutsProvider>
     </ProjectProvider>
