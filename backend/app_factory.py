@@ -49,7 +49,6 @@ def create_app(
 
     app = FastAPI(title=title)
     app.state.admin_token = admin_token  # type: ignore[attr-defined]
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins or DEFAULT_ALLOWED_ORIGINS,
@@ -91,29 +90,16 @@ def create_app(
                 pass
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
-    @app.middleware("http")
-    async def admin_token_middleware(
-        request: Request, call_next: Callable[[Request], Awaitable[StarletteResponse]]
-    ) -> StarletteResponse:
-        if admin_token and request.url.path.startswith("/api/admin"):
-            auth_header = request.headers.get("Authorization")
-            if not auth_header or not auth_header.startswith("Bearer "):
-                return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-
-            token = auth_header.split(" ", 1)[1]
-            if not hmac.compare_digest(token, admin_token):
-                return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-
-        return await call_next(request)
-
     _FALLBACK = "An unexpected error occurred"
+
+    async def _route_http_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        if isinstance(exc, HTTPError):
+            log_http_error(request, exc)
+            return JSONResponse(status_code=exc.status_code, content={"error": exc.detail or _FALLBACK})
+        return JSONResponse(status_code=500, content={"error": str(exc) or _FALLBACK})
 
     async def _validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": str(exc) or _FALLBACK})
-
-    async def _route_http_error_handler(request: Request, exc: HTTPError) -> JSONResponse:
-        log_http_error(request, exc)
-        return JSONResponse(status_code=exc.status_code, content={"error": exc.detail or _FALLBACK})
 
     async def _route_generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
         log_unhandled_exception(request, exc)
