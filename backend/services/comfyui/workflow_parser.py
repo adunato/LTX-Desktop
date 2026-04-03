@@ -106,9 +106,7 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name in inputs.keys():
-                            label = f"[{node_id}] {node_title} -> {field_name}"
-                            if node_title != node_type:
-                                label = f"[{node_id}] {node_title} ({node_type}) -> {field_name}"
+                            label = f"Node {node_id} ({node_title}) \u2192 {field_name}"
                                 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
@@ -128,9 +126,7 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name in inputs.keys():
-                            label = f"[{node_id}] {node_title} -> {field_name}"
-                            if node_title != node_type:
-                                label = f"[{node_id}] {node_title} ({node_type}) -> {field_name}"
+                            label = f"Node {node_id} ({node_title}) \u2192 {field_name}"
 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
