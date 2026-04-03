@@ -110,7 +110,10 @@ def get_available_workflows() -> list[dict[str, Any]]:
                             if isinstance(field_value, list) and len(field_value) == 2:
                                 continue
 
-                            label = f"Node {node_id} ({node_title}) \u2192 {field_name}"
+                            if field_name == "value":
+                                label = f"{node_title} ({node_id})"
+                            else:
+                                label = f"{node_title} \u2192 {field_name} ({node_id})"
                                 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
@@ -134,7 +137,10 @@ def get_available_workflows() -> list[dict[str, Any]]:
                             if isinstance(field_value, list) and len(field_value) == 2:
                                 continue
 
-                            label = f"Node {node_id} ({node_title}) \u2192 {field_name}"
+                            if field_name == "value":
+                                label = f"{node_title} ({node_id})"
+                            else:
+                                label = f"{node_title} \u2192 {field_name} ({node_id})"
 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
