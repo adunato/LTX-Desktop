@@ -166,12 +166,13 @@ def save_workflow_config(workflow_id: str, config: dict[str, Any]) -> None:
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(existing, f, indent=2)
 
-def import_workflow(file_path: Path, name: str | None = None) -> str:
+def import_workflow(file_path: Path, original_filename: str | None = None, name: str | None = None) -> str:
     if not file_path.exists():
         raise ValueError("File does not exist")
     
-    workflow_id = file_path.stem
-    target_path = WORKFLOWS_DIR / file_path.name
+    target_filename = original_filename if original_filename else file_path.name
+    target_path = WORKFLOWS_DIR / target_filename
+    workflow_id = target_path.stem
     
     # Copy file to workflows directory
     shutil.copy(file_path, target_path)
