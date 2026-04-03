@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { backendFetch } from '../lib/backend'
 
 export interface ProxyWidget {
@@ -26,15 +26,21 @@ const ComfyUIContext = createContext<ComfyUIContextValue | null>(null)
 export function ComfyUIProvider({ children }: { children: ReactNode }) {
   const [workflows, setWorkflows] = useState<ComfyUIWorkflow[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const hasFetchedRef = useRef(false)
 
   const refreshWorkflows = useCallback(async () => {
     setIsLoading(true)
     try {
       const res = await backendFetch('/api/workflows')
-      if (res.ok) {
-        const data = await res.json()
-        setWorkflows(data)
+      if (!res.ok) return
+      const contentType = res.headers.get('content-type') ?? ''
+      if (!contentType.includes('application/json')) {
+        console.error('Unexpected response type from /api/workflows:', contentType)
+        return
       }
+      const data = await res.json()
+      setWorkflows(data)
+      hasFetchedRef.current = true
     } catch (e) {
       console.error('Failed to fetch comfy workflows', e)
     } finally {
@@ -42,8 +48,28 @@ export function ComfyUIProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Fetch on mount (may fail if backend not ready yet)
   useEffect(() => {
     void refreshWorkflows()
+  }, [refreshWorkflows])
+
+  // Re-fetch when backend health status changes to 'alive'
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onBackendHealthStatus((data) => {
+      if (data?.status === 'alive') {
+        void refreshWorkflows()
+      }
+    })
+    return unsubscribe
+  }, [refreshWorkflows])
+
+  // Also listen for the custom backend-ready event (for compatibility with App.tsx startup flow)
+  useEffect(() => {
+    const handler = () => {
+      void refreshWorkflows()
+    }
+    window.addEventListener('backend-ready', handler)
+    return () => window.removeEventListener('backend-ready', handler)
   }, [refreshWorkflows])
 
   return (

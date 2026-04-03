@@ -98,6 +98,7 @@ function AppContent() {
         logger.info('Starting Python backend...')
         await window.electronAPI.startPythonBackend()
         logger.info('Python backend started successfully')
+        window.dispatchEvent(new CustomEvent('backend-ready'))
       } catch (e) {
         logger.error(`Failed to start Python backend: ${e}`)
       }
