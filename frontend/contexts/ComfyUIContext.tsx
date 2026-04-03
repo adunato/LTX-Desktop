@@ -35,7 +35,7 @@ export function ComfyUIProvider({ children }: { children: ReactNode }) {
       if (!res.ok) return
       const contentType = res.headers.get('content-type') ?? ''
       if (!contentType.includes('application/json')) {
-        console.error('Unexpected response type from /api/workflows:', contentType)
+        // Expected on mount before backend is ready (Vite returns index.html); silently skip
         return
       }
       const data = await res.json()
