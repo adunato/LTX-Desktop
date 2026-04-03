@@ -44,13 +44,32 @@ class ComfyUIImagePipeline:
 
         # 3. Convert to API format
         api_workflow: dict[str, Any] = {}
-        nodes = graph_data.get("nodes", [])
-        for node in nodes:
-            node_id = str(node["id"])
-            api_workflow[node_id] = {
-                "class_type": node["type"],
-                "inputs": node.get("inputs", {})
-            }
+        nodes = graph_data.get("nodes")
+        if isinstance(nodes, list):
+            # Graph format
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                node_type = node.get("type", "")
+                if node_type == "LTX_UI_Group":
+                    continue
+                node_id = str(node["id"])
+                api_workflow[node_id] = {
+                    "class_type": node_type,
+                    "inputs": node.get("inputs", {})
+                }
+        else:
+            # API format
+            for node_id, node in graph_data.items():
+                if not isinstance(node, dict):
+                    continue
+                node_type = node.get("class_type", "")
+                if node_type == "LTX_UI_Group":
+                    continue
+                api_workflow[node_id] = {
+                    "class_type": node_type,
+                    "inputs": node.get("inputs", {})
+                }
 
         # 4. Patch Workflow
         def set_input(ltx_key: str, value: Any) -> None:
