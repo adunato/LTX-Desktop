@@ -105,7 +105,11 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     # Extract all inputs for manual mapping
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
-                        for field_name in inputs.keys():
+                        for field_name, field_value in inputs.items():
+                            # Skip inputs that are linked to other nodes (e.g., ["75:65", 0])
+                            if isinstance(field_value, list) and len(field_value) == 2:
+                                continue
+
                             label = f"Node {node_id} ({node_title}) \u2192 {field_name}"
                                 
                             all_inputs.append({
@@ -125,7 +129,11 @@ def get_available_workflows() -> list[dict[str, Any]]:
                     
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
-                        for field_name in inputs.keys():
+                        for field_name, field_value in inputs.items():
+                            # Skip inputs that are linked to other nodes (e.g., ["75:65", 0])
+                            if isinstance(field_value, list) and len(field_value) == 2:
+                                continue
+
                             label = f"Node {node_id} ({node_title}) \u2192 {field_name}"
 
                             all_inputs.append({
