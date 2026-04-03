@@ -111,9 +111,9 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 continue
 
                             if field_name == "value":
-                                label = f"{node_title} ({node_id})"
+                                label = node_title
                             else:
-                                label = f"{node_title} \u2192 {field_name} ({node_id})"
+                                label = f"{node_title} \u2192 {field_name}"
                                 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
@@ -138,9 +138,9 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 continue
 
                             if field_name == "value":
-                                label = f"{node_title} ({node_id})"
+                                label = node_title
                             else:
-                                label = f"{node_title} \u2192 {field_name} ({node_id})"
+                                label = f"{node_title} \u2192 {field_name}"
 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
