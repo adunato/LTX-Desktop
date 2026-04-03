@@ -1,7 +1,7 @@
 import copy
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from services.comfyui.comfyui_client import ComfyUIClient
 from services.comfyui.workflow_parser import get_available_workflows, get_workflow
