@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { X, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { X, AlertCircle, ChevronDown, Check } from 'lucide-react'
 import { Button } from './ui/button'
 import type { ComfyUIWorkflow, ProxyWidget } from './ComfyUIWorkflowManager'
 
@@ -45,6 +45,169 @@ const REQUIRED_KEYS: Record<string, string[]> = {
   video_gen: ['prompt', 'seed', 'width', 'height', 'num_frames', 'frame_rate'],
   retake: ['video_path', 'mask_path', 'prompt', 'seed', 'start_time', 'end_time'],
   ic_lora: ['prompt', 'seed', 'height', 'width', 'num_frames', 'frame_rate'],
+}
+
+// Predefined color palette for node type tags (text color, bg color, border color)
+const NODE_TYPE_COLORS = [
+  { text: 'text-blue-400', bg: 'bg-blue-500/15', border: 'border-blue-500/30' },
+  { text: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30' },
+  { text: 'text-amber-400', bg: 'bg-amber-500/15', border: 'border-amber-500/30' },
+  { text: 'text-pink-400', bg: 'bg-pink-500/15', border: 'border-pink-500/30' },
+  { text: 'text-cyan-400', bg: 'bg-cyan-500/15', border: 'border-cyan-500/30' },
+  { text: 'text-violet-400', bg: 'bg-violet-500/15', border: 'border-violet-500/30' },
+  { text: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-500/30' },
+  { text: 'text-teal-400', bg: 'bg-teal-500/15', border: 'border-teal-500/30' },
+  { text: 'text-rose-400', bg: 'bg-rose-500/15', border: 'border-rose-500/30' },
+  { text: 'text-indigo-400', bg: 'bg-indigo-500/15', border: 'border-indigo-500/30' },
+  { text: 'text-lime-400', bg: 'bg-lime-500/15', border: 'border-lime-500/30' },
+  { text: 'text-fuchsia-400', bg: 'bg-fuchsia-500/15', border: 'border-fuchsia-500/30' },
+]
+
+/**
+ * Deterministic hash function to assign consistent colors to node types.
+ * Uses a simple djb2-style hash to map node type strings to color indices.
+ */
+function getNodeTypeColorIndex(nodeType: string): number {
+  let hash = 5381
+  for (let i = 0; i < nodeType.length; i++) {
+    hash = ((hash << 5) + hash) + nodeType.charCodeAt(i)
+    hash = hash & hash // Convert to 32bit int
+  }
+  return Math.abs(hash) % NODE_TYPE_COLORS.length
+}
+
+/**
+ * Extract the node type (class name) from a node_title.
+ * node_title format: "CLIP Text Encode (Prompt)" -> type is "CLIP Text Encode"
+ * node_title format: "Load Image (First Frame)" -> type is "Load Image"
+ */
+function extractNodeType(nodeTitle: string): string {
+  return nodeTitle.replace(/\s*\([^)]*\)\s*$/, '').trim()
+}
+
+interface NodeSelectOption {
+  id: string
+  label: string
+  node_title: string
+}
+
+interface NodeSelectProps {
+  value: string
+  onChange: (value: string) => void
+  options: NodeSelectOption[]
+}
+
+/**
+ * Custom dropdown component that renders options with colored type tags.
+ * Replaces native <select> to support rich styling.
+ */
+function NodeSelect({ value, onChange, options }: NodeSelectProps) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Build color map for node types
+  const colorMap = new Map<string, number>()
+  for (const opt of options) {
+    if (opt.node_title && !colorMap.has(opt.node_title)) {
+      const nodeType = extractNodeType(opt.node_title)
+      colorMap.set(opt.node_title, getNodeTypeColorIndex(nodeType))
+    }
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
+  const selectedOption = options.find(o => o.id === value)
+  const selectedNodeType = selectedOption?.node_title ? extractNodeType(selectedOption.node_title) : ''
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger button */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-3 py-2 hover:border-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
+      >
+        {selectedOption ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate">{selectedOption.label}</span>
+            {selectedNodeType && (
+              <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                (() => {
+                  const ci = colorMap.get(selectedOption.node_title!) ?? 0
+                  return NODE_TYPE_COLORS[ci]
+                })()
+              }`}>
+                {selectedNodeType}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-zinc-500">Not Mapped</span>
+        )}
+        <ChevronDown className={`h-3.5 w-3.5 text-zinc-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown menu */}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl">
+          {/* Not Mapped option */}
+          <button
+            type="button"
+            onClick={() => { onChange(''); setOpen(false) }}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
+              !value ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+            }`}
+          >
+            <span className="w-4 flex-shrink-0">
+              {!value && <Check className="h-3.5 w-3.5 text-blue-400" />}
+            </span>
+            <span>Not Mapped</span>
+          </button>
+          {/* Options */}
+          {options.map((opt) => {
+            const nodeType = opt.node_title ? extractNodeType(opt.node_title) : ''
+            const colorIndex = opt.node_title ? (colorMap.get(opt.node_title) ?? 0) : 0
+            const colors = NODE_TYPE_COLORS[colorIndex]
+            const isSelected = opt.id === value
+
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => { onChange(opt.id); setOpen(false) }}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
+                  isSelected ? 'bg-zinc-800 text-white' : 'text-zinc-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="w-4 flex-shrink-0">
+                    {isSelected && <Check className="h-3.5 w-3.5 text-blue-400" />}
+                  </span>
+                  <span className="truncate">{opt.label}</span>
+                </div>
+                {nodeType && (
+                  <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors}`}>
+                    {nodeType}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props) {
@@ -127,25 +290,23 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
               {fields.map((fieldKey) => {
                 const current = mapping[fieldKey]
                 const value = current ? `${current.node}:${current.field}` : ''
-                
+                const selectOptions: NodeSelectOption[] = workflow.all_inputs.map(i => ({
+                  id: i.id,
+                  label: i.label,
+                  node_title: i.node_title
+                }))
+
                 return (
                   <div key={fieldKey} className="grid grid-cols-[1fr,1.5fr] items-center gap-4 p-3 rounded-xl bg-zinc-800/30 border border-zinc-800/50">
                     <span className="text-xs font-medium text-zinc-300">
                       {FIELD_LABELS[fieldKey] || fieldKey}
                       {!REQUIRED_KEYS[pipeline]?.includes(fieldKey) && <span className="text-zinc-500 font-normal ml-1.5">(Optional)</span>}
                     </span>
-                    <select
+                    <NodeSelect
                       value={value}
-                      onChange={(e) => handleMapField(fieldKey, e.target.value)}
-                      className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
-                    >
-                      <option value="">Not Mapped</option>
-                      {workflow.all_inputs.map((input) => (
-                        <option key={input.id} value={input.id}>
-                          {input.label}{input.node_title && input.label !== input.node_title ? ` — ${input.node_title}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(newVal) => handleMapField(fieldKey, newVal)}
+                      options={selectOptions}
+                    />
                   </div>
                 )
               })}
@@ -158,7 +319,7 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
           <Button variant="ghost" onClick={onClose} className="text-zinc-400 hover:text-white">
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={() => onSave(pipeline, mapping)}
             className="bg-blue-600 hover:bg-blue-500 text-white min-w-[100px]"
           >
