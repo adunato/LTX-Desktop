@@ -142,7 +142,7 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
                       <option value="">Not Mapped</option>
                       {workflow.all_inputs.map((input) => (
                         <option key={input.id} value={input.id}>
-                          {input.label}
+                          {input.label}{input.node_title && input.label !== input.node_title ? ` — ${input.node_title}` : ''}
                         </option>
                       ))}
                     </select>

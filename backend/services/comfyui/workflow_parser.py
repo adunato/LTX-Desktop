@@ -79,14 +79,31 @@ def get_available_workflows() -> list[dict[str, Any]]:
             nodes = data.get("nodes")
             if isinstance(nodes, list):
                 # Graph Format
+
+                # Pre-scan: find which internal nodes are proxied by groups
+                proxied_node_ids: set[str] = set()
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    node_type = str(node.get("type", ""))
+                    if node_type != "GroupNode":
+                        continue
+                    properties = node.get("properties")
+                    if isinstance(properties, dict):
+                        proxy_widgets = properties.get("proxyWidgets")
+                        if isinstance(proxy_widgets, list):
+                            for proxy in proxy_widgets:
+                                if isinstance(proxy, list) and len(proxy) >= 1:
+                                    proxied_node_ids.add(str(proxy[0]))
+
                 for node in nodes:
                     if not isinstance(node, dict):
                         continue
                     node_id = str(node.get("id", ""))
                     node_type = str(node.get("type", "Unknown"))
                     node_title = str(node.get("title", node_type))
-                    
-                    # Discovery
+
+                    # Discovery: check proxyWidgets for LTX key mapping
                     properties = node.get("properties")
                     if isinstance(properties, dict):
                         proxy_widgets = properties.get("proxyWidgets")
@@ -101,8 +118,13 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                             "node": target_node_id,
                                             "field": target_widget_name
                                         }
-                    
+
                     # Extract all inputs for manual mapping
+                    # Skip internal nodes that are proxied by a group — their inputs
+                    # are exposed at the group level and would be duplicates
+                    if node_type != "GroupNode" and node_id in proxied_node_ids:
+                        continue
+
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name, field_value in inputs.items():
@@ -114,22 +136,26 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 label = node_title
                             else:
                                 label = f"{node_title} \u2192 {field_name}"
-                                
+
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
                                 "label": label,
                                 "node": node_id,
-                                "field": field_name
+                                "field": field_name,
+                                "node_title": node_title
                             })
             else:
-                # API Format (flat dict keyed by node ID)
+                # API Format (flat dict keyed by node ID).
+                # API format flattens subgraphs — there's no group info.
+                # Use the field name as the primary label so it's easy to scan,
+                # and store the full node path separately for display.
                 for node_id, node in data.items():
                     if not isinstance(node, dict):
                         continue
                     node_type = node.get("class_type", "Unknown")
                     meta = node.get("_meta", {})
                     node_title = meta.get("title", node_type)
-                    
+
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name, field_value in inputs.items():
@@ -140,13 +166,14 @@ def get_available_workflows() -> list[dict[str, Any]]:
                             if field_name == "value":
                                 label = node_title
                             else:
-                                label = f"{node_title} \u2192 {field_name}"
+                                label = field_name
 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
                                 "label": label,
                                 "node": node_id,
-                                "field": field_name
+                                "field": field_name,
+                                "node_title": node_title
                             })
 
             # 2. Layer on user manual overrides from config
