@@ -23,11 +23,12 @@ from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.settings import router as settings_router
+from _routes.workflows import router as workflows_router
 from logging_policy import log_http_error, log_unhandled_exception
 from state import init_state_service
 
 if TYPE_CHECKING:
-    from app_handler import AppHandler
+    from handlers.app_handler import AppHandler
 
 DEFAULT_ALLOWED_ORIGINS: list[str] = [
     "http://localhost:5173",
@@ -51,12 +52,13 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins or DEFAULT_ALLOWED_ORIGINS,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     @app.middleware("http")
-    async def _auth_middleware(  # pyright: ignore[reportUnusedFunction]
+    async def _auth_middleware(
         request: Request,
         call_next: Callable[[Request], Awaitable[StarletteResponse]],
     ) -> StarletteResponse:
@@ -64,6 +66,7 @@ def create_app(
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
+
         def _token_matches(candidate: str) -> bool:
             return hmac.compare_digest(candidate, auth_token)
 
@@ -72,6 +75,7 @@ def create_app(
             if _token_matches(request.query_params.get("token", "")):
                 return await call_next(request)
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
         # HTTP: Bearer or Basic auth
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer ") and _token_matches(auth_header[7:]):
@@ -94,9 +98,7 @@ def create_app(
             return JSONResponse(status_code=exc.status_code, content={"error": exc.detail or _FALLBACK})
         return JSONResponse(status_code=500, content={"error": str(exc) or _FALLBACK})
 
-    async def _validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        if isinstance(exc, RequestValidationError):
-            return JSONResponse(status_code=422, content={"error": str(exc) or _FALLBACK})
+    async def _validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": str(exc) or _FALLBACK})
 
     async def _route_generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -116,5 +118,6 @@ def create_app(
     app.include_router(retake_router)
     app.include_router(ic_lora_router)
     app.include_router(runtime_policy_router)
+    app.include_router(workflows_router)
 
     return app

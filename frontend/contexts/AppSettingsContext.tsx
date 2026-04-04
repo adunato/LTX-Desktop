@@ -9,7 +9,6 @@ export interface InferenceSettings {
 export interface FastModelSettings {
   useUpscaler: boolean
 }
-
 export interface AppSettings {
   useTorchCompile: boolean
   loadOnStartup: boolean
@@ -26,6 +25,7 @@ export interface AppSettings {
   seedLocked: boolean
   lockedSeed: number
   modelsDir: string
+  comfyuiUrl: string
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -44,6 +44,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   seedLocked: false,
   lockedSeed: 42,
   modelsDir: '',
+  comfyuiUrl: 'http://127.0.0.1:8188',
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
@@ -92,6 +93,7 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     seedLocked: data.seedLocked ?? DEFAULT_APP_SETTINGS.seedLocked,
     lockedSeed: data.lockedSeed ?? DEFAULT_APP_SETTINGS.lockedSeed,
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
+    comfyuiUrl: data.comfyuiUrl ?? DEFAULT_APP_SETTINGS.comfyuiUrl,
   }
 }
 

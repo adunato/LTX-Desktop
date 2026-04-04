@@ -4,6 +4,7 @@ import { backendFetch } from './lib/backend'
 import { ProjectProvider, useProjects } from './contexts/ProjectContext'
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext'
 import { AppSettingsProvider, useAppSettings } from './contexts/AppSettingsContext'
+import { ComfyUIProvider } from './contexts/ComfyUIContext'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { useBackend } from './hooks/use-backend'
 import { logger } from './lib/logger'
@@ -97,6 +98,7 @@ function AppContent() {
         logger.info('Starting Python backend...')
         await window.electronAPI.startPythonBackend()
         logger.info('Python backend started successfully')
+        window.dispatchEvent(new CustomEvent('backend-ready'))
       } catch (e) {
         logger.error(`Failed to start Python backend: ${e}`)
       }
@@ -525,8 +527,10 @@ export default function App() {
     <ProjectProvider>
       <KeyboardShortcutsProvider>
         <AppSettingsProvider>
-          <AppContent />
-          <KeyboardShortcutsModal />
+          <ComfyUIProvider>
+            <AppContent />
+            <KeyboardShortcutsModal />
+          </ComfyUIProvider>
         </AppSettingsProvider>
       </KeyboardShortcutsProvider>
     </ProjectProvider>

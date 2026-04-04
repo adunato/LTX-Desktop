@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from _routes._errors import HTTPError
 from api_types import GenerateImageRequest, GenerateImageResponse
@@ -54,6 +54,18 @@ class ImageGenerationHandler(StateHandlerBase):
             logger.info("Using locked seed for image: %s", seed)
         else:
             seed = int(time.time()) % 2147483647
+
+        if req.workflow_id:
+            return self._generate_via_comfyui(
+                workflow_id=req.workflow_id,
+                prompt=req.prompt,
+                width=width,
+                height=height,
+                num_inference_steps=req.numSteps,
+                seed=seed,
+                num_images=num_images,
+                workflow_params=req.workflow_params,
+            )
 
         if self.config.force_api_generations:
             return self._generate_via_api(
@@ -143,54 +155,111 @@ class ImageGenerationHandler(StateHandlerBase):
         seed: int,
         num_images: int,
     ) -> GenerateImageResponse:
-        generation_id = uuid.uuid4().hex[:8]
-        output_paths: list[Path] = []
+        output_paths: list[str] = []
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        settings = self.state.app_settings.model_copy(deep=True)
+        generation_id = uuid.uuid4().hex[:8]
+        settings = self.state.app_settings
+
+        if not settings.fal_api_key.strip():
+            raise HTTPError(500, "FAL_API_KEY_NOT_CONFIGURED")
 
         try:
             self._generation.start_api_generation(generation_id)
-            self._generation.update_progress("validating_request", 5, None, None)
+            self._generation.update_progress("validating_request", 5, 0, num_images)
 
-            if not settings.fal_api_key.strip():
-                raise HTTPError(500, "FAL_API_KEY_NOT_CONFIGURED")
-
-            for idx in range(num_images):
+            for i in range(num_images):
                 if self._generation.is_generation_cancelled():
                     raise RuntimeError("Generation was cancelled")
 
-                inference_progress = 15 + int((idx / num_images) * 60)
-                self._generation.update_progress("inference", inference_progress, None, None)
+                self._generation.update_progress("inference", 15 + int((i / num_images) * 80), i, num_images)
+                
+                # Call Zit API (FAL)
                 image_bytes = self._zit_api_client.generate_text_to_image(
                     api_key=settings.fal_api_key,
                     prompt=prompt,
                     width=width,
                     height=height,
-                    seed=seed + idx,
+                    seed=seed + i,
                     num_inference_steps=num_inference_steps,
                 )
 
-                if self._generation.is_generation_cancelled():
-                    raise RuntimeError("Generation was cancelled")
-
-                download_progress = 75 + int(((idx + 1) / num_images) * 20)
-                self._generation.update_progress("downloading_output", download_progress, None, None)
-
-                output_path = self.config.outputs_dir / f"zit_api_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+                output_path = self.config.outputs_dir / f"api_image_{timestamp}_{uuid.uuid4().hex[:8]}.png"
                 output_path.write_bytes(image_bytes)
-                output_paths.append(output_path)
+                output_paths.append(str(output_path))
 
-            self._generation.update_progress("complete", 100, None, None)
-            self._generation.complete_generation([str(path) for path in output_paths])
-            return GenerateImageResponse(status="complete", image_paths=[str(path) for path in output_paths])
-        except HTTPError as e:
-            self._generation.fail_generation(e.detail)
+            self._generation.update_progress("complete", 100, num_images, num_images)
+            self._generation.complete_generation(output_paths)
+            return GenerateImageResponse(status="complete", image_paths=output_paths)
+        except HTTPError:
             raise
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 for path in output_paths:
-                    path.unlink(missing_ok=True)
+                    Path(path).unlink(missing_ok=True)
                 logger.info("Image generation cancelled by user")
                 return GenerateImageResponse(status="cancelled")
+            raise HTTPError(500, str(e)) from e
+
+    def _generate_via_comfyui(
+        self,
+        *,
+        workflow_id: str,
+        prompt: str,
+        width: int,
+        height: int,
+        num_inference_steps: int,
+        seed: int,
+        num_images: int,
+        workflow_params: dict[str, Any] | None,
+    ) -> GenerateImageResponse:
+        from services.comfyui.image_pipeline import ComfyUIImagePipeline
+
+        generation_id = uuid.uuid4().hex[:8]
+        output_paths: list[str] = []
+        
+        pipeline = ComfyUIImagePipeline(
+            workflow_id=workflow_id,
+            comfyui_url=self.state.app_settings.comfyui_url,
+            outputs_dir=self.config.outputs_dir
+        )
+
+        try:
+            self._generation.start_api_generation(generation_id)
+            self._generation.update_progress("validating_request", 5, None, None)
+            
+            for idx in range(num_images):
+                if self._generation.is_generation_cancelled():
+                    raise RuntimeError("Generation was cancelled")
+
+                result = pipeline.generate(
+                    prompt=prompt,
+                    height=height,
+                    width=width,
+                    guidance_scale=8.0,
+                    num_inference_steps=num_inference_steps,
+                    seed=seed + idx,
+                    workflow_params=workflow_params,
+                    progress_callback=lambda phase, prog: self._generation.update_progress(phase, prog, idx, num_images),
+                    is_cancelled=self._generation.is_generation_cancelled
+                )
+                
+                # Get paths from the compatible result object
+                if hasattr(result, "image_paths"):
+                    output_paths.extend(cast(Any, result).image_paths)
+
+            self._generation.update_progress("complete", 100, None, None)
+            self._generation.complete_generation(output_paths)
+            return GenerateImageResponse(status="complete", image_paths=output_paths)
+        except Exception as e:
+            self._generation.fail_generation(str(e))
+            if "cancelled" in str(e).lower():
+                for path in output_paths:
+                    Path(path).unlink(missing_ok=True)
+                logger.info("Image generation cancelled by user")
+                return GenerateImageResponse(status="cancelled")
+            
+            # Rethrow as HTTPError if it was already one
+            if isinstance(e, HTTPError):
+                raise
             raise HTTPError(500, str(e)) from e

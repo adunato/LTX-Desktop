@@ -1,0 +1,29 @@
+{
+  "pipeline": "image_gen",
+  "ui_mapping": {
+    "prompt": {
+      "node": "6",
+      "field": "text"
+    },
+    "seed": {
+      "node": "3",
+      "field": "seed"
+    },
+    "width": {
+      "node": "5",
+      "field": "width"
+    },
+    "height": {
+      "node": "5",
+      "field": "height"
+    },
+    "guidance_scale": {
+      "node": "3",
+      "field": "cfg"
+    },
+    "num_inference_steps": {
+      "node": "3",
+      "field": "steps"
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, NamedTuple, TypeAlias, TypedDict
+from typing import Any, Literal, NamedTuple, TypeAlias, TypedDict
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -235,6 +235,8 @@ class GenerateVideoRequest(BaseModel):
     imagePath: str | None = None
     audioPath: str | None = None
     aspectRatio: Literal["16:9", "9:16"] = "16:9"
+    workflow_id: str | None = None
+    workflow_params: dict[str, Any] | None = None
 
 
 class GenerateImageRequest(BaseModel):
@@ -243,6 +245,8 @@ class GenerateImageRequest(BaseModel):
     height: int = 1024
     numSteps: int = 4
     numImages: int = 1
+    workflow_id: str | None = None
+    workflow_params: dict[str, Any] | None = None
 
 
 def _default_model_types() -> set[ModelFileType]:
@@ -273,6 +277,8 @@ class RetakeRequest(BaseModel):
     duration: float
     prompt: str = ""
     mode: str = "replace_audio_and_video"
+    workflow_id: str | None = None
+    workflow_params: dict[str, Any] | None = None
 
 
 class IcLoraExtractRequest(BaseModel):
@@ -300,3 +306,5 @@ class IcLoraGenerateRequest(BaseModel):
     cfg_guidance_scale: float = 1.0
     negative_prompt: str = ""
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
+    workflow_id: str | None = None
+    workflow_params: dict[str, Any] | None = None

@@ -25,8 +25,8 @@ interface GenerationProgress {
 }
 
 interface UseGenerationReturn extends GenerationState {
-  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
-  generateImage: (prompt: string, settings: GenerationSettings) => Promise<void>
+  generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null, workflowId?: string, workflowParams?: Record<string, any>) => Promise<void>
+  generateImage: (prompt: string, settings: GenerationSettings, workflowId?: string, workflowParams?: Record<string, any>) => Promise<void>
   cancel: () => void
   reset: () => void
 }
@@ -111,6 +111,8 @@ export function useGeneration(): UseGenerationReturn {
     imagePath: string | null,
     settings: GenerationSettings,
     audioPath?: string | null,
+    workflowId?: string,
+    workflowParams?: Record<string, any>,
   ) => {
     const statusMsg = settings.model === 'pro'
       ? 'Loading Pro model & generating...'
@@ -144,6 +146,8 @@ export function useGeneration(): UseGenerationReturn {
         audio: String(settings.audio),
         cameraMotion: settings.cameraMotion,
         aspectRatio: settings.aspectRatio || '16:9',
+        workflow_id: workflowId,
+        workflow_params: workflowParams,
       }
       if (imagePath) {
         body.imagePath = imagePath
@@ -287,7 +291,9 @@ export function useGeneration(): UseGenerationReturn {
 
   const generateImage = useCallback(async (
     prompt: string,
-    settings: GenerationSettings
+    settings: GenerationSettings,
+    workflowId?: string,
+    workflowParams?: Record<string, any>,
   ) => {
     if (forceApiGenerations) {
       try {
@@ -384,6 +390,8 @@ export function useGeneration(): UseGenerationReturn {
           height: dims.height,
           numSteps,
           numImages,
+          workflow_id: workflowId,
+          workflow_params: workflowParams,
         }),
         signal: abortControllerRef.current.signal,
       })

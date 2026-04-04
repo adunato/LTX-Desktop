@@ -6,6 +6,8 @@ import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
 
+import { ComfyUIWorkflowManager } from './ComfyUIWorkflowManager'
+
 interface TextEncoderStatus {
   downloaded: boolean
   size_gb: number
@@ -18,7 +20,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'apiKeys' | 'inference' | 'comfyWorkflows' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
@@ -268,6 +270,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     { id: 'general' as TabId, label: 'General', icon: Settings },
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
     { id: 'inference' as TabId, label: 'Inference', icon: Sliders },
+    { id: 'comfyWorkflows' as TabId, label: 'ComfyUI Workflows', icon: Sliders },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
@@ -281,7 +284,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       />
 
       {/* Modal */}
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-xl mx-4">
+      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-3xl mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -348,6 +351,26 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   >
                     <Folder className="h-4 w-4" />
                   </Button>
+                </div>
+              </div>
+
+              {/* ComfyUI Server URL */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sliders className="h-4 w-4 text-blue-400" />
+                  <h3 className="text-sm font-semibold text-white">ComfyUI Server URL</h3>
+                </div>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Address of your local ComfyUI server. Default is http://127.0.0.1:8188.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={settings.comfyuiUrl}
+                    onChange={(e) => onSettingsChange({ ...settings, comfyuiUrl: e.target.value })}
+                    placeholder="http://127.0.0.1:8188"
+                    className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                  />
                 </div>
               </div>
 
@@ -1046,6 +1069,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </p>
               </div>
             </>
+          )}
+
+          {activeTab === 'comfyWorkflows' && (
+            <ComfyUIWorkflowManager />
           )}
 
           {activeTab === 'promptEnhancer' && (

@@ -23,6 +23,7 @@ extraResources:
     filter:
       - "**/*.py"
       - pyproject.toml
+      - "**/*.json"
       - "!**/__pycache__/**"
       - "!**/*.pyc"
       - "!.venv/**"

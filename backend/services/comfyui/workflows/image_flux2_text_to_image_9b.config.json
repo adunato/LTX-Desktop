@@ -1,0 +1,21 @@
+{
+  "pipeline": "image_gen",
+  "ui_mapping": {
+    "prompt": {
+      "node": "76",
+      "field": "value"
+    },
+    "seed": {
+      "node": "75:73",
+      "field": "noise_seed"
+    },
+    "width": {
+      "node": "75:68",
+      "field": "value"
+    },
+    "height": {
+      "node": "75:69",
+      "field": "value"
+    }
+  }
+}

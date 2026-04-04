@@ -243,6 +243,8 @@ export async function startPythonBackend(): Promise<void> {
       cwd: backendPath,
       env: {
         ...process.env,
+        LTX_BYPASS_API_CHECK: process.env.LTX_BYPASS_API_CHECK,
+        LTX_BYPASS_MODEL_CHECK: process.env.LTX_BYPASS_MODEL_CHECK,
         PYTHONUNBUFFERED: '1',
         PYTHONNOUSERSITE: '1',
         // Only pass LTX_PORT when the developer explicitly set it
