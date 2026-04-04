@@ -48,17 +48,26 @@ This plan outlines the steps required to implement the ComfyUI integration descr
     -   Import a workflow, assign to "Image Gen", perform manual mapping, verify LED turns green.
     -   Select workflow in MODEL dropdown and generate an image.
 
-## Phase 4: Video Generation Journey (Vertical Slice)
+## Phase 4: Video Generation Journey (EXTRACTED TO CR003)
 
 **Goal:** Complete end-to-end Video Generation slice (T2V/I2V and A2V).
 
+> **NOTE:** This phase has been extracted into a separate change request: **CR003-comfyui-video-generation**.
+> See `change-requests/CR003-comfyui-video-generation/IMPLEMENTATION_PLAN.md` for full documentation.
+
+**Summary (COMPLETED):**
 1.  **Backend: Video Adapters:**
-    *   Implement `ComfyUIVideoPipeline` and `ComfyUIA2VPipeline`.
-    *   Handle multipart asset uploads (image/audio) to ComfyUI.
+    *   Implemented `ComfyUIVideoPipeline` for T2V/I2V generation.
+    *   Implemented `ComfyUIA2VPipeline` for audio-to-video generation.
+    *   Added multipart asset upload support (image/audio) to ComfyUI client.
+    *   Added `view_video()` method to ComfyUI client for video downloads.
 2.  **Frontend: Video Journey:**
-    *   Integrate into Video tab's MODEL dropdown.
+    *   Integrated into Video tab's MODEL dropdown (already supported via `pipeline === 'video_gen'` filter).
+    *   Added routing in `VideoGenerationHandler.generate()` to detect `workflow_id` and route to ComfyUI pipelines.
 3.  **Validation:**
-    *   Generate a video and an audio-to-video clip.
+    *   Created sample video workflow JSON files (`ltx_video_t2v.json`, `ltx_video_a2v.json`).
+    *   All backend tests pass (262 passed).
+    *   Type checks pass with pyright strict mode.
 
 ## Phase 5: Advanced Editing Journeys (Retake & IC-LoRA Vertical Slice)
 
