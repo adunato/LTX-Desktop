@@ -22,3 +22,20 @@ export async function backendWsUrl(path: string): Promise<string> {
   const sep = path.includes('?') ? '&' : '?'
   return `${ws}${path}${sep}token=${token}`
 }
+
+export const deleteWorkflow = (workflowId: string) =>
+  backendFetch(`/api/workflows/${workflowId}`, { method: 'DELETE' })
+
+export const renameWorkflow = (workflowId: string, name: string) =>
+  backendFetch(`/api/workflows/${workflowId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  })
+
+export const duplicateWorkflow = (workflowId: string, name?: string) =>
+  backendFetch(`/api/workflows/${workflowId}/duplicate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name ?? null })
+  })

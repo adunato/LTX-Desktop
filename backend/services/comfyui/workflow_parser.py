@@ -180,17 +180,81 @@ def save_workflow_config(workflow_id: str, config: dict[str, Any]) -> None:
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(existing, f, indent=2)
 
+def delete_workflow(workflow_id: str) -> None:
+    """Delete workflow JSON and config files."""
+    workflow_path = WORKFLOWS_DIR / f"{workflow_id}.json"
+    config_path = WORKFLOWS_DIR / f"{workflow_id}.config.json"
+    workflow_path.unlink(missing_ok=True)
+    config_path.unlink(missing_ok=True)
+
+
+def rename_workflow(workflow_id: str, new_name: str) -> None:
+    """Update the display name in the workflow JSON (does not change file/ID)."""
+    file_path = WORKFLOWS_DIR / f"{workflow_id}.json"
+    if not file_path.exists():
+        raise FileNotFoundError(f"Workflow '{workflow_id}' not found")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["name"] = new_name
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def duplicate_workflow(workflow_id: str, new_name: str | None = None) -> str:
+    """Copy workflow + config to a new unique ID. Returns new workflow_id."""
+    source_path = WORKFLOWS_DIR / f"{workflow_id}.json"
+    if not source_path.exists():
+        raise FileNotFoundError(f"Workflow '{workflow_id}' not found")
+
+    # Generate unique ID
+    stem = workflow_id
+    counter = 1
+    while (WORKFLOWS_DIR / f"{stem}_{counter}.json").exists():
+        counter += 1
+    new_id = f"{stem}_{counter}"
+
+    # Copy workflow
+    target_path = WORKFLOWS_DIR / f"{new_id}.json"
+    shutil.copy2(source_path, target_path)
+
+    # Update name
+    with open(target_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["name"] = new_name or f"{data.get('name', workflow_id)} (copy)"
+    with open(target_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    # Copy config if exists
+    source_config = WORKFLOWS_DIR / f"{workflow_id}.config.json"
+    if source_config.exists():
+        target_config = WORKFLOWS_DIR / f"{new_id}.config.json"
+        shutil.copy2(source_config, target_config)
+
+    return new_id
+
+
 def import_workflow(file_path: Path, original_filename: str | None = None, name: str | None = None) -> str:
+    """Import a workflow file, handling filename collisions by appending _N suffixes."""
     if not file_path.exists():
         raise ValueError("File does not exist")
-    
-    target_filename = original_filename if original_filename else file_path.name
-    target_path = WORKFLOWS_DIR / target_filename
+
+    base_filename = original_filename if original_filename else file_path.name
+    target_path = WORKFLOWS_DIR / base_filename
+
+    # Handle collision
+    if target_path.exists():
+        stem = target_path.stem
+        suffix = target_path.suffix  # .json
+        counter = 1
+        while target_path.exists():
+            target_path = WORKFLOWS_DIR / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    # Copy file
+    shutil.copy2(file_path, target_path)
     workflow_id = target_path.stem
-    
-    # Copy file to workflows directory
-    shutil.copy(file_path, target_path)
-    
+
+    # Set name if provided
     if name:
         try:
             with open(target_path, "r", encoding="utf-8") as f:
@@ -200,7 +264,7 @@ def import_workflow(file_path: Path, original_filename: str | None = None, name:
                 json.dump(data, f, indent=2)
         except Exception:
             pass
-            
+
     return workflow_id
 
 def get_workflow(workflow_id: str) -> dict[str, Any] | None:

@@ -1,12 +1,17 @@
 import os
+import re
 import logging
 from typing import Any
 from fastapi import APIRouter, UploadFile, File, Form, Body, HTTPException
+from pydantic import BaseModel
 
 from services.comfyui.workflow_parser import (
-    get_available_workflows, 
-    import_workflow, 
+    get_available_workflows,
+    import_workflow,
     save_workflow_config,
+    delete_workflow,
+    rename_workflow,
+    duplicate_workflow,
     WORKFLOWS_DIR
 )
 
@@ -53,3 +58,51 @@ def update_config(
 ):
     save_workflow_config(workflow_id, config)
     return {"status": "success"}
+
+
+class RenameRequest(BaseModel):
+    name: str
+
+
+class DuplicateRequest(BaseModel):
+    name: str | None = None
+
+
+def _validate_workflow_id(workflow_id: str) -> None:
+    """Reject workflow IDs that contain path traversal or invalid characters."""
+    if not re.match(r"^[a-zA-Z0-9_-]+$", workflow_id):
+        raise HTTPException(status_code=400, detail="Invalid workflow ID")
+
+
+@router.delete("/{workflow_id}")
+def delete_workflow_endpoint(workflow_id: str):
+    _validate_workflow_id(workflow_id)
+
+    workflow_path = WORKFLOWS_DIR / f"{workflow_id}.json"
+    if not workflow_path.exists():
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    delete_workflow(workflow_id)
+    return {"status": "success"}
+
+
+@router.patch("/{workflow_id}")
+def rename_workflow_endpoint(workflow_id: str, body: RenameRequest):
+    _validate_workflow_id(workflow_id)
+
+    try:
+        rename_workflow(workflow_id, body.name)
+        return {"status": "success", "id": workflow_id}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+
+@router.post("/{workflow_id}/duplicate")
+def duplicate_workflow_endpoint(workflow_id: str, body: DuplicateRequest | None = None):
+    _validate_workflow_id(workflow_id)
+
+    try:
+        new_id = duplicate_workflow(workflow_id, body.name if body else None)
+        return {"status": "success", "id": new_id}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Workflow not found")

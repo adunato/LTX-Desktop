@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Plus, Settings, Loader2, Upload, AlertCircle } from 'lucide-react'
+import { Plus, Settings, Loader2, Upload, AlertCircle, Copy, Pencil, Trash2, Check, X } from 'lucide-react'
 import { Button } from './ui/button'
-import { backendFetch } from '../lib/backend'
+import { backendFetch, deleteWorkflow, renameWorkflow, duplicateWorkflow } from '../lib/backend'
 import { ComfyUIMappingModal } from './ComfyUIMappingModal'
 import { useComfyUI, type ComfyUIWorkflow, type ProxyWidget } from '../contexts/ComfyUIContext'
 
@@ -13,6 +13,8 @@ export function ComfyUIWorkflowManager() {
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   const handleImport = async () => {
     const input = document.createElement('input')
@@ -68,6 +70,59 @@ export function ComfyUIWorkflowManager() {
     }
   }
 
+  const handleDuplicate = async (workflowId: string) => {
+    try {
+      const res = await duplicateWorkflow(workflowId)
+      if (res.ok) {
+        await refreshWorkflows()
+      }
+    } catch (e) {
+      console.error('Failed to duplicate workflow', e)
+    }
+  }
+
+  const handleDelete = async (workflowId: string, workflowName: string) => {
+    if (!window.confirm(`Delete workflow '${workflowName}'? This action cannot be undone.`)) {
+      return
+    }
+    try {
+      const res = await deleteWorkflow(workflowId)
+      if (res.ok) {
+        await refreshWorkflows()
+      }
+    } catch (e) {
+      console.error('Failed to delete workflow', e)
+    }
+  }
+
+  const startRename = (workflowId: string, currentName: string) => {
+    setRenamingId(workflowId)
+    setRenameValue(currentName)
+  }
+
+  const cancelRename = () => {
+    setRenamingId(null)
+    setRenameValue('')
+  }
+
+  const saveRename = async (workflowId: string) => {
+    const trimmed = renameValue.trim()
+    if (!trimmed) {
+      cancelRename()
+      return
+    }
+    try {
+      const res = await renameWorkflow(workflowId, trimmed)
+      if (res.ok) {
+        await refreshWorkflows()
+      }
+    } catch (e) {
+      console.error('Failed to rename workflow', e)
+    } finally {
+      cancelRename()
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -106,37 +161,106 @@ export function ComfyUIWorkflowManager() {
       ) : (
         <div className="grid gap-3">
           {workflows.map((wf) => (
-            <div 
+            <div
               key={wf.id}
               className="flex items-center justify-between p-4 rounded-xl bg-zinc-800/50 border border-zinc-700/50 hover:border-zinc-600 transition-all"
             >
               <div className="flex items-center gap-4">
                 {/* Health LED */}
-                <div 
+                <div
                   className={`h-2.5 w-2.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)] ${
                     wf.is_healthy ? 'bg-green-500 shadow-green-500/50' : 'bg-red-500 shadow-red-500/50'
-                  }`} 
+                  }`}
                   title={wf.is_healthy ? 'Valid Mapping' : 'Invalid Mapping'}
                 />
                 <div>
-                  <h4 className="text-sm font-medium text-zinc-200">{wf.name}</h4>
+                  {renamingId === wf.id ? (
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveRename(wf.id)
+                        if (e.key === 'Escape') cancelRename()
+                      }}
+                      className="text-sm font-medium text-zinc-200 bg-zinc-700 border border-zinc-600 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                      autoFocus
+                    />
+                  ) : (
+                    <h4 className="text-sm font-medium text-zinc-200">{wf.name}</h4>
+                  )}
                   <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
                     Assigned to: {wf.pipeline.replace('_', ' ')}
                   </p>
                 </div>
               </div>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-zinc-400 hover:text-white hover:bg-zinc-700"
-                onClick={() => {
-                  setSelectedWorkflow(wf)
-                  setIsMappingModalOpen(true)
-                }}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {renamingId === wf.id ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-green-400 hover:text-green-300 hover:bg-zinc-700 h-8 w-8 p-0"
+                      onClick={() => saveRename(wf.id)}
+                      title="Save"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-zinc-400 hover:text-white hover:bg-zinc-700 h-8 w-8 p-0"
+                      onClick={cancelRename}
+                      title="Cancel"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-zinc-400 hover:text-white hover:bg-zinc-700 h-8 w-8 p-0"
+                      onClick={() => handleDuplicate(wf.id)}
+                      title="Duplicate"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-zinc-400 hover:text-white hover:bg-zinc-700 h-8 w-8 p-0"
+                      onClick={() => startRename(wf.id, wf.name)}
+                      title="Rename"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-zinc-400 hover:text-red-400 hover:bg-zinc-700 h-8 w-8 p-0"
+                      onClick={() => handleDelete(wf.id, wf.name)}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-zinc-400 hover:text-white hover:bg-zinc-700 h-8 w-8 p-0"
+                      onClick={() => {
+                        setSelectedWorkflow(wf)
+                        setIsMappingModalOpen(true)
+                      }}
+                      title="Settings"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>
