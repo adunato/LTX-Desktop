@@ -1,0 +1,45 @@
+{
+  "name": "LTX Video T2V Example",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LTXVTextToVideo",
+      "title": "LTX Text To Video",
+      "properties": {
+        "proxyWidgets": [
+          [1, "prompt"],
+          [1, "seed"],
+          [1, "width"],
+          [1, "height"],
+          [1, "num_frames"],
+          [1, "frame_rate"],
+          [1, "steps"],
+          [1, "cfg"]
+        ]
+      },
+      "inputs": {
+        "prompt": "A beautiful sunset over the ocean",
+        "seed": 12345,
+        "width": 960,
+        "height": 544,
+        "num_frames": 97,
+        "frame_rate": 24,
+        "steps": 20,
+        "cfg": 3.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "VHS_VideoCombine",
+      "title": "Video Combine",
+      "properties": {},
+      "inputs": {
+        "images": [1, 0],
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "ltx_video",
+        "format": "video/h264-mp4"
+      }
+    }
+  ]
+}

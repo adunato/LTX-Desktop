@@ -79,6 +79,10 @@ class VideoGenerationHandler(StateHandlerBase):
         ):
             return self._generate_forced_api(req)
 
+        # Check if this is a ComfyUI workflow request
+        if req.workflow_id:
+            return self._generate_via_comfyui(req)
+
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
 
@@ -540,3 +544,160 @@ class VideoGenerationHandler(StateHandlerBase):
             return audio_value
         normalized = audio_value.strip().lower()
         return normalized in {"1", "true", "yes", "on"}
+
+    def _generate_via_comfyui(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
+        """Generate video using ComfyUI workflow."""
+        from services.comfyui.video_pipeline import ComfyUIVideoPipeline
+
+        if self._generation.is_generation_running():
+            raise HTTPError(409, "Generation already in progress")
+
+        generation_id = self._make_generation_id()
+        duration = int(float(req.duration))
+        fps = int(float(req.fps))
+        num_frames = self._compute_num_frames(duration, fps)
+
+        resolution = req.resolution
+        RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
+            "540p": (960, 544),
+            "720p": (1280, 704),
+            "1080p": (1920, 1088),
+        }
+
+        def get_16_9_size(res: str) -> tuple[int, int]:
+            return RESOLUTION_MAP_16_9.get(res, (960, 544))
+
+        def get_9_16_size(res: str) -> tuple[int, int]:
+            w, h = get_16_9_size(res)
+            return h, w
+
+        match req.aspectRatio:
+            case "9:16":
+                width, height = get_9_16_size(resolution)
+            case "16:9":
+                width, height = get_16_9_size(resolution)
+
+        seed = self._resolve_seed()
+        image_path = normalize_optional_path(req.imagePath)
+
+        # Check if this is an A2V request (has audio)
+        audio_path = normalize_optional_path(req.audioPath)
+        if audio_path:
+            return self._generate_a2v_via_comfyui(
+                req=req,
+                width=width,
+                height=height,
+                num_frames=num_frames,
+                fps=fps,
+                seed=seed,
+                image_path=image_path,
+                audio_path=audio_path,
+            )
+
+        # Standard T2V/I2V generation
+        if not req.workflow_id:
+            raise HTTPError(400, "No workflow ID provided for ComfyUI video generation")
+
+        pipeline = ComfyUIVideoPipeline(
+            workflow_id=req.workflow_id,
+            comfyui_url=self.state.app_settings.comfyui_url,
+            outputs_dir=self.config.outputs_dir,
+        )
+
+        output_path: str | None = None
+        try:
+            self._generation.start_api_generation(generation_id)
+            self._generation.update_progress("validating_request", 5, None, None)
+
+            output_path = pipeline.generate(
+                prompt=req.prompt,
+                height=height,
+                width=width,
+                num_frames=num_frames,
+                frame_rate=fps,
+                num_inference_steps=20,  # Default for ComfyUI
+                seed=seed,
+                guidance_scale=8.0,
+                image_path=image_path,
+                workflow_params=req.workflow_params or {},
+                progress_callback=lambda phase, prog: self._generation.update_progress(str(phase), int(prog), None, None),  # type: ignore[arg-type,unknown-argument-type]
+                is_cancelled=self._generation.is_generation_cancelled,
+            )
+
+            self._generation.update_progress("complete", 100, None, None)
+            self._generation.complete_generation(output_path)
+            return GenerateVideoResponse(status="complete", video_path=output_path)
+        except Exception as e:
+            self._generation.fail_generation(str(e))
+            if "cancelled" in str(e).lower():
+                if output_path:
+                    Path(output_path).unlink(missing_ok=True)
+                logger.info("Video generation cancelled by user")
+                return GenerateVideoResponse(status="cancelled")
+
+            if isinstance(e, HTTPError):
+                raise
+            raise HTTPError(500, str(e)) from e
+
+    def _generate_a2v_via_comfyui(
+        self,
+        req: GenerateVideoRequest,
+        width: int,
+        height: int,
+        num_frames: int,
+        fps: int,
+        seed: int,
+        image_path: str | None,
+        audio_path: str,
+    ) -> GenerateVideoResponse:
+        """Generate audio-to-video using ComfyUI workflow."""
+        from services.comfyui.a2v_pipeline import ComfyUIA2VPipeline
+
+        if not req.workflow_id:
+            raise HTTPError(400, "No workflow ID provided for ComfyUI A2V generation")
+
+        generation_id = self._make_generation_id()
+        pipeline = ComfyUIA2VPipeline(
+            workflow_id=req.workflow_id,
+            comfyui_url=self.state.app_settings.comfyui_url,
+            outputs_dir=self.config.outputs_dir,
+        )
+
+        output_path: str | None = None
+        try:
+            self._generation.start_api_generation(generation_id)
+            self._generation.update_progress("validating_request", 5, None, None)
+
+            output_path = pipeline.generate(
+                prompt=req.prompt,
+                height=height,
+                width=width,
+                num_frames=num_frames,
+                frame_rate=fps,
+                num_inference_steps=20,
+                seed=seed,
+                audio_path=audio_path,
+                guidance_scale=8.0,
+                negative_prompt=req.negativePrompt or "",
+                image_path=image_path,
+                audio_start_time=0.0,
+                audio_max_duration=None,
+                workflow_params=req.workflow_params or {},
+                progress_callback=lambda phase, prog: self._generation.update_progress(str(phase), int(prog), None, None),  # type: ignore[arg-type,unknown-argument-type]
+                is_cancelled=self._generation.is_generation_cancelled,
+            )
+
+            self._generation.update_progress("complete", 100, None, None)
+            self._generation.complete_generation(output_path)
+            return GenerateVideoResponse(status="complete", video_path=output_path)
+        except Exception as e:
+            self._generation.fail_generation(str(e))
+            if "cancelled" in str(e).lower():
+                if output_path:
+                    Path(output_path).unlink(missing_ok=True)
+                logger.info("Video generation cancelled by user")
+                return GenerateVideoResponse(status="cancelled")
+
+            if isinstance(e, HTTPError):
+                raise
+            raise HTTPError(500, str(e)) from e

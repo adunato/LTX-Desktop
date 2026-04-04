@@ -1,0 +1,45 @@
+{
+  "pipeline": "video_gen",
+  "ui_mapping": {
+    "prompt": {
+      "node": "1",
+      "field": "prompt"
+    },
+    "seed": {
+      "node": "1",
+      "field": "seed"
+    },
+    "width": {
+      "node": "1",
+      "field": "width"
+    },
+    "height": {
+      "node": "1",
+      "field": "height"
+    },
+    "num_frames": {
+      "node": "1",
+      "field": "num_frames"
+    },
+    "frame_rate": {
+      "node": "1",
+      "field": "frame_rate"
+    },
+    "num_inference_steps": {
+      "node": "1",
+      "field": "steps"
+    },
+    "guidance_scale": {
+      "node": "1",
+      "field": "cfg"
+    },
+    "audio_path": {
+      "node": "1",
+      "field": "audio_path"
+    },
+    "audio_start_time": {
+      "node": "1",
+      "field": "audio_start_time"
+    }
+  }
+}
