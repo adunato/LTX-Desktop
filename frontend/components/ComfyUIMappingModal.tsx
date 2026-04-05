@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { X, AlertCircle, ChevronDown, Check } from 'lucide-react'
 import { Button } from './ui/button'
 import type { ComfyUIWorkflow, ProxyWidget } from './ComfyUIWorkflowManager'
@@ -96,7 +97,7 @@ interface NodeSelectProps {
 function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -108,30 +109,27 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
     }
   }
 
+  const handleToggle = () => {
+    if (!open && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+    } else {
+      setDropdownPos(null)
+    }
+    setOpen(!open)
+  }
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
+        setDropdownPos(null)
       }
     }
     if (open) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [open])
-
-  // Calculate fixed position when dropdown opens to escape overflow clipping
-  useEffect(() => {
-    if (open && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect()
-      setDropdownStyle({
-        position: 'fixed',
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        zIndex: 9999,
-      })
     }
   }, [open])
 
@@ -163,7 +161,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
       {/* Trigger button */}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={handleToggle}
         className="w-full flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-3 py-2 hover:border-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
       >
         {selectedOption ? (
@@ -186,9 +184,12 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
         <ChevronDown className={`h-3.5 w-3.5 text-zinc-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Dropdown menu */}
-      {open && (
-        <div style={dropdownStyle} className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl">
+      {/* Dropdown rendered via portal to escape overflow clipping */}
+      {dropdownPos && createPortal(
+        <div
+          className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl"
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 9999 }}
+        >
           {/* Search input */}
           <div className="p-2 border-b border-zinc-800">
             <input
@@ -259,7 +260,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
             )}
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   )
 }
