@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from 'cmdk'
 import { X, AlertCircle, ChevronDown, Check } from 'lucide-react'
 import { Button } from './ui/button'
 import type { ComfyUIWorkflow, ProxyWidget } from './ComfyUIWorkflowManager'
@@ -92,80 +93,59 @@ interface NodeSelectProps {
 
 /**
  * Custom dropdown component that renders options with colored type tags.
- * Replaces native <select> to support rich styling.
+ * Uses cmdk for searchable combobox with proper portal rendering.
  */
 function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLButtonElement>(null)
+  const [position, setPosition] = useState<{ top: number; left: number; width: number } | null>(null)
 
   // Build color map for node types (class_type)
-  const colorMap = new Map<string, number>()
-  for (const opt of options) {
-    if (opt.class_type && !colorMap.has(opt.class_type)) {
-      colorMap.set(opt.class_type, getNodeTypeColorIndex(opt.class_type))
+  const colorMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const opt of options) {
+      if (opt.class_type && !map.has(opt.class_type)) {
+        map.set(opt.class_type, getNodeTypeColorIndex(opt.class_type))
+      }
     }
-  }
+    return map
+  }, [options])
 
-  const handleClose = () => {
-    setOpen(false)
-    setDropdownPos(null)
-  }
+  // Filter options based on search (case-insensitive, match label, node_title, and class_type)
+  const filteredOptions = useMemo(() => {
+    if (!search) return options
+    const lower = search.toLowerCase()
+    return options.filter(opt =>
+      opt.label.toLowerCase().includes(lower) ||
+      opt.node_title?.toLowerCase().includes(lower) ||
+      opt.class_type?.toLowerCase().includes(lower)
+    )
+  }, [options, search])
 
   const handleToggle = () => {
     if (!open && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
-      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width })
-    } else {
-      handleClose()
+      setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
     }
+    setOpen(!open)
   }
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const inContainer = containerRef.current?.contains(e.target as Node)
-      const inDropdown = dropdownRef.current?.contains(e.target as Node)
-      if (!inContainer && !inDropdown) {
-        handleClose()
-      }
-    }
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [open])
-
-  // Focus search input when dropdown opens
-  useEffect(() => {
-    if (open) {
-      searchInputRef.current?.focus()
-    } else {
-      setSearch('')
-    }
-  }, [open])
+  const handleSelect = (id: string) => {
+    onChange(id)
+    setOpen(false)
+    setPosition(null)
+    setSearch('')
+  }
 
   const selectedOption = options.find(o => o.id === value)
   const selectedClassType = selectedOption?.class_type ?? ''
 
-  // Filter options based on search (case-insensitive, match label, node_title, and class_type)
-  const searchLower = search.toLowerCase()
-  const filteredOptions = search
-    ? options.filter(opt => {
-        const labelMatch = opt.label.toLowerCase().includes(searchLower)
-        const nodeTitleMatch = opt.node_title?.toLowerCase().includes(searchLower) ?? false
-        const classTypeMatch = opt.class_type?.toLowerCase().includes(searchLower) ?? false
-        return labelMatch || nodeTitleMatch || classTypeMatch
-      })
-    : options
-
   return (
-    <div ref={containerRef} className="relative">
+    <div className="relative">
       {/* Trigger button */}
       <button
+        ref={containerRef}
         type="button"
         onClick={handleToggle}
         className="w-full flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-3 py-2 hover:border-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
@@ -191,81 +171,73 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
       </button>
 
       {/* Dropdown rendered via portal to escape overflow clipping */}
-      {dropdownPos && createPortal(
+      {open && position && createPortal(
         <div
-          ref={dropdownRef}
-          className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl"
-          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 9999 }}
+          className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden"
+          style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, zIndex: 9999 }}
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Search input */}
-          <div className="p-2 border-b border-zinc-800">
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search nodes..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.stopPropagation()
-                  setOpen(false)
-                }
-              }}
-              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-3 py-2 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-          </div>
-          {/* Scrollable options container */}
-          <div className="max-h-48 overflow-y-auto">
-            {/* Not Mapped option */}
-            <button
-              type="button"
-              onClick={() => { onChange(''); handleClose() }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
-                !value ? 'bg-zinc-800 text-white' : 'text-zinc-400'
-              }`}
-            >
-              <span className="w-4 flex-shrink-0">
-                {!value && <Check className="h-3.5 w-3.5 text-blue-400" />}
-              </span>
-              <span>Not Mapped</span>
-            </button>
-            {/* Options */}
-            {filteredOptions.length === 0 ? (
-              <div className="px-3 py-4 text-xs text-zinc-500 text-center">
+          <Command
+            className="bg-zinc-900"
+            label="Node selector"
+            value={value}
+            onValueChange={handleSelect}
+            shouldFilter={false}
+          >
+            <div className="border-b border-zinc-700">
+              <CommandInput
+                placeholder="Search nodes..."
+                value={search}
+                onValueChange={setSearch}
+                className="text-xs bg-zinc-800 text-zinc-200 placeholder:text-zinc-500 focus:outline-none px-3 py-2"
+              />
+            </div>
+            <CommandList className="max-h-48 overflow-y-auto">
+              <CommandEmpty className="px-3 py-4 text-xs text-zinc-500 text-center">
                 No matching nodes
-              </div>
-            ) : (
-              filteredOptions.map((opt) => {
-                const classType = opt.class_type ?? ''
-                const colorIndex = opt.class_type ? (colorMap.get(opt.class_type) ?? 0) : 0
-                const colors = NODE_TYPE_COLORS[colorIndex]
-                const isSelected = opt.id === value
+              </CommandEmpty>
+              <CommandGroup>
+                {/* Not Mapped option */}
+                <CommandItem
+                  value=""
+                  onSelect={() => handleSelect('')}
+                  className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer data-[selected=true]:bg-zinc-800 data-[selected=true]:text-white text-zinc-400"
+                >
+                  <span className="w-4 flex-shrink-0">
+                    {!value && <Check className="h-3.5 w-3.5 text-blue-400" />}
+                  </span>
+                  <span>Not Mapped</span>
+                </CommandItem>
+                {/* Options */}
+                {filteredOptions.map((opt) => {
+                  const classType = opt.class_type ?? ''
+                  const colorIndex = opt.class_type ? (colorMap.get(opt.class_type) ?? 0) : 0
+                  const colors = NODE_TYPE_COLORS[colorIndex]
 
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => { onChange(opt.id); handleClose() }}
-                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
-                      isSelected ? 'bg-zinc-800 text-white' : 'text-zinc-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="w-4 flex-shrink-0">
-                        {isSelected && <Check className="h-3.5 w-3.5 text-blue-400" />}
-                      </span>
-                      <span className="truncate">{opt.label}</span>
-                    </div>
-                    {classType && (
-                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors}`}>
-                        {classType}
-                      </span>
-                    )}
-                  </button>
-                )
-              })
-            )}
-          </div>
+                  return (
+                    <CommandItem
+                      key={opt.id}
+                      value={opt.id}
+                      onSelect={() => handleSelect(opt.id)}
+                      className="flex items-center justify-between gap-2 px-3 py-2 text-xs cursor-pointer data-[selected=true]:bg-zinc-800 data-[selected=true]:text-white text-zinc-300"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="w-4 flex-shrink-0">
+                          {opt.id === value && <Check className="h-3.5 w-3.5 text-blue-400" />}
+                        </span>
+                        <span className="truncate">{opt.label}</span>
+                      </div>
+                      {classType && (
+                        <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors}`}>
+                          {classType}
+                        </span>
+                      )}
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
         </div>
       , document.body)}
     </div>
