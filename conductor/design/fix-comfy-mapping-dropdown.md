@@ -21,14 +21,9 @@ The node mapping dropdown in `ComfyUIMappingModal.tsx` fails to function correct
 4.  **Refine Portal Positioning**:
     - Ensure the portal uses a safe z-index and handle cleanup properly on unmount.
 
-## Verification Plan
-1.  **Manual Testing**:
-    - Open the ComfyUI Mapping Modal.
-    - Verify the "Target Pipeline" buttons still work.
-    - Click a node mapping dropdown and ensure it stays open.
-    - Search for a node and verify the list filters correctly.
-    - Select a node and verify the dropdown closes and the label updates to the selected node.
-    - Verify that clicking outside the dropdown closes it without saving a change.
-    - Save the configuration and verify the mapping persists in the state.
-2.  **Automated Testing**:
-    - None planned for this UI fix, but will verify no regressions in build/lint.
+## Verification Results
+1.  **Manual Testing**: Verified by developer.
+2.  **Automated Testing**: TypeScript type check (`tsc --noEmit`) passed.
+
+## Status
+Completed on 2026-04-05.
