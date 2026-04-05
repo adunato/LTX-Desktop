@@ -103,7 +103,9 @@ interface NodeSelectProps {
  */
 function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Build color map for node types
   const colorMap = new Map<string, number>()
@@ -127,8 +129,27 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
     }
   }, [open])
 
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (open) {
+      searchInputRef.current?.focus()
+    } else {
+      setSearch('')
+    }
+  }, [open])
+
   const selectedOption = options.find(o => o.id === value)
   const selectedNodeType = selectedOption?.node_title ? extractNodeType(selectedOption.node_title) : ''
+
+  // Filter options based on search (case-insensitive, match label and node type)
+  const searchLower = search.toLowerCase()
+  const filteredOptions = search
+    ? options.filter(opt => {
+        const labelMatch = opt.label.toLowerCase().includes(searchLower)
+        const nodeTypeMatch = opt.node_title?.toLowerCase().includes(searchLower) ?? false
+        return labelMatch || nodeTypeMatch
+      })
+    : options
 
   return (
     <div ref={containerRef} className="relative">
@@ -160,50 +181,75 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
 
       {/* Dropdown menu */}
       {open && (
-        <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl">
-          {/* Not Mapped option */}
-          <button
-            type="button"
-            onClick={() => { onChange(''); setOpen(false) }}
-            className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
-              !value ? 'bg-zinc-800 text-white' : 'text-zinc-400'
-            }`}
-          >
-            <span className="w-4 flex-shrink-0">
-              {!value && <Check className="h-3.5 w-3.5 text-blue-400" />}
-            </span>
-            <span>Not Mapped</span>
-          </button>
-          {/* Options */}
-          {options.map((opt) => {
-            const nodeType = opt.node_title ? extractNodeType(opt.node_title) : ''
-            const colorIndex = opt.node_title ? (colorMap.get(opt.node_title) ?? 0) : 0
-            const colors = NODE_TYPE_COLORS[colorIndex]
-            const isSelected = opt.id === value
+        <div className="absolute z-50 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl">
+          {/* Search input */}
+          <div className="p-2 border-b border-zinc-800">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search nodes..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setOpen(false)
+                }
+              }}
+              className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-3 py-2 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          {/* Scrollable options container */}
+          <div className="max-h-48 overflow-y-auto">
+            {/* Not Mapped option */}
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false) }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
+                !value ? 'bg-zinc-800 text-white' : 'text-zinc-400'
+              }`}
+            >
+              <span className="w-4 flex-shrink-0">
+                {!value && <Check className="h-3.5 w-3.5 text-blue-400" />}
+              </span>
+              <span>Not Mapped</span>
+            </button>
+            {/* Options */}
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-zinc-500 text-center">
+                No matching nodes
+              </div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const nodeType = opt.node_title ? extractNodeType(opt.node_title) : ''
+                const colorIndex = opt.node_title ? (colorMap.get(opt.node_title) ?? 0) : 0
+                const colors = NODE_TYPE_COLORS[colorIndex]
+                const isSelected = opt.id === value
 
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => { onChange(opt.id); setOpen(false) }}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
-                  isSelected ? 'bg-zinc-800 text-white' : 'text-zinc-300'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="w-4 flex-shrink-0">
-                    {isSelected && <Check className="h-3.5 w-3.5 text-blue-400" />}
-                  </span>
-                  <span className="truncate">{opt.label}</span>
-                </div>
-                {nodeType && (
-                  <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors}`}>
-                    {nodeType}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { onChange(opt.id); setOpen(false) }}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
+                      isSelected ? 'bg-zinc-800 text-white' : 'text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="w-4 flex-shrink-0">
+                        {isSelected && <Check className="h-3.5 w-3.5 text-blue-400" />}
+                      </span>
+                      <span className="truncate">{opt.label}</span>
+                    </div>
+                    {nodeType && (
+                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors}`}>
+                        {nodeType}
+                      </span>
+                    )}
+                  </button>
+                )
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
