@@ -219,7 +219,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
             {/* Not Mapped option */}
             <button
               type="button"
-              onClick={() => { onChange(''); setOpen(false) }}
+              onClick={() => { onChange(''); handleClose() }}
               className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
                 !value ? 'bg-zinc-800 text-white' : 'text-zinc-400'
               }`}
@@ -245,7 +245,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => { onChange(opt.id); setOpen(false) }}
+                    onClick={() => { onChange(opt.id); handleClose() }}
                     className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors ${
                       isSelected ? 'bg-zinc-800 text-white' : 'text-zinc-300'
                     }`}
