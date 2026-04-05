@@ -99,6 +99,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number; width: number } | null>(null)
 
   // Build color map for node types (class_type)
@@ -123,7 +124,24 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
     )
   }, [options, search])
 
-  const handleToggle = () => {
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    if (!open) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (containerRef.current?.contains(target) || dropdownRef.current?.contains(target)) {
+        return
+      }
+      setOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!open && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
       setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
@@ -173,6 +191,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
       {/* Dropdown rendered via portal to escape overflow clipping */}
       {open && position && createPortal(
         <div
+          ref={dropdownRef}
           className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden"
           style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, zIndex: 9999 }}
           onClick={(e) => e.stopPropagation()}
@@ -180,8 +199,6 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
           <Command
             className="bg-zinc-900"
             label="Node selector"
-            value={value}
-            onValueChange={handleSelect}
             shouldFilter={false}
           >
             <div className="border-b border-zinc-700">
@@ -189,7 +206,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
                 placeholder="Search nodes..."
                 value={search}
                 onValueChange={setSearch}
-                className="text-xs bg-zinc-800 text-zinc-200 placeholder:text-zinc-500 focus:outline-none px-3 py-2"
+                className="text-xs bg-zinc-800 text-zinc-200 placeholder:text-zinc-500 focus:outline-none px-3 py-2 w-full"
               />
             </div>
             <CommandList className="max-h-48 overflow-y-auto">
@@ -199,7 +216,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
               <CommandGroup>
                 {/* Not Mapped option */}
                 <CommandItem
-                  value=""
+                  value="not_mapped"
                   onSelect={() => handleSelect('')}
                   className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer data-[selected=true]:bg-zinc-800 data-[selected=true]:text-white text-zinc-400"
                 >
@@ -323,7 +340,12 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
             <div className="space-y-3">
               {fields.map((fieldKey) => {
                 const current = mapping[fieldKey]
-                const value = current ? `${current.node}:${current.field}` : ''
+                // Find the input ID that matches the current mapping (node + field)
+                const currentInput = current 
+                  ? workflow.all_inputs.find(i => i.node === current.node && i.field === current.field)
+                  : null
+                const value = currentInput ? currentInput.id : ''
+                
                 const selectOptions: NodeSelectOption[] = workflow.all_inputs.map(i => ({
                   id: i.id,
                   label: i.label,
