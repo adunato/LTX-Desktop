@@ -190,7 +190,8 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 "label": label,
                                 "node": node_id,
                                 "field": field_name,
-                                "node_title": node_title
+                                "node_title": node_title,
+                                "class_type": node_type
                             })
             else:
                 # API Format (flat dict keyed by node ID).
@@ -221,7 +222,8 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 "label": label,
                                 "node": node_id,
                                 "field": field_name,
-                                "node_title": node_title
+                                "node_title": node_title,
+                                "class_type": node_type
                             })
 
             # 2. Layer on user manual overrides from config

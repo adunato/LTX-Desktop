@@ -76,19 +76,11 @@ function getNodeTypeColorIndex(nodeType: string): number {
   return Math.abs(hash) % NODE_TYPE_COLORS.length
 }
 
-/**
- * Extract the node type (class name) from a node_title.
- * node_title format: "CLIP Text Encode (Prompt)" -> type is "CLIP Text Encode"
- * node_title format: "Load Image (First Frame)" -> type is "Load Image"
- */
-function extractNodeType(nodeTitle: string): string {
-  return nodeTitle.replace(/\s*\([^)]*\)\s*$/, '').trim()
-}
-
 interface NodeSelectOption {
   id: string
   label: string
   node_title: string
+  class_type: string
 }
 
 interface NodeSelectProps {
@@ -107,12 +99,11 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Build color map for node types
+  // Build color map for node types (class_type)
   const colorMap = new Map<string, number>()
   for (const opt of options) {
-    if (opt.node_title && !colorMap.has(opt.node_title)) {
-      const nodeType = extractNodeType(opt.node_title)
-      colorMap.set(opt.node_title, getNodeTypeColorIndex(nodeType))
+    if (opt.class_type && !colorMap.has(opt.class_type)) {
+      colorMap.set(opt.class_type, getNodeTypeColorIndex(opt.class_type))
     }
   }
 
@@ -139,15 +130,16 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   }, [open])
 
   const selectedOption = options.find(o => o.id === value)
-  const selectedNodeType = selectedOption?.node_title ? extractNodeType(selectedOption.node_title) : ''
+  const selectedClassType = selectedOption?.class_type ?? ''
 
-  // Filter options based on search (case-insensitive, match label and node type)
+  // Filter options based on search (case-insensitive, match label, node_title, and class_type)
   const searchLower = search.toLowerCase()
   const filteredOptions = search
     ? options.filter(opt => {
         const labelMatch = opt.label.toLowerCase().includes(searchLower)
-        const nodeTypeMatch = opt.node_title?.toLowerCase().includes(searchLower) ?? false
-        return labelMatch || nodeTypeMatch
+        const nodeTitleMatch = opt.node_title?.toLowerCase().includes(searchLower) ?? false
+        const classTypeMatch = opt.class_type?.toLowerCase().includes(searchLower) ?? false
+        return labelMatch || nodeTitleMatch || classTypeMatch
       })
     : options
 
@@ -162,14 +154,14 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
         {selectedOption ? (
           <div className="flex items-center gap-2 min-w-0">
             <span className="truncate">{selectedOption.label}</span>
-            {selectedNodeType && (
+            {selectedClassType && (
               <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${
                 (() => {
-                  const ci = colorMap.get(selectedOption.node_title!) ?? 0
+                  const ci = colorMap.get(selectedClassType) ?? 0
                   return NODE_TYPE_COLORS[ci]
                 })()
               }`}>
-                {selectedNodeType}
+                {selectedClassType}
               </span>
             )}
           </div>
@@ -220,8 +212,8 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
               </div>
             ) : (
               filteredOptions.map((opt) => {
-                const nodeType = opt.node_title ? extractNodeType(opt.node_title) : ''
-                const colorIndex = opt.node_title ? (colorMap.get(opt.node_title) ?? 0) : 0
+                const classType = opt.class_type ?? ''
+                const colorIndex = opt.class_type ? (colorMap.get(opt.class_type) ?? 0) : 0
                 const colors = NODE_TYPE_COLORS[colorIndex]
                 const isSelected = opt.id === value
 
@@ -240,9 +232,9 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
                       </span>
                       <span className="truncate">{opt.label}</span>
                     </div>
-                    {nodeType && (
+                    {classType && (
                       <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors}`}>
-                        {nodeType}
+                        {classType}
                       </span>
                     )}
                   </button>
@@ -339,7 +331,8 @@ export function ComfyUIMappingModal({ isOpen, onClose, workflow, onSave }: Props
                 const selectOptions: NodeSelectOption[] = workflow.all_inputs.map(i => ({
                   id: i.id,
                   label: i.label,
-                  node_title: i.node_title
+                  node_title: i.node_title,
+                  class_type: i.class_type
                 }))
 
                 return (
