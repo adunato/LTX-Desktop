@@ -49,7 +49,7 @@
   "123": {
     "inputs": {
       "audio": "female_0_kmh.mp3",
-      "audioUI": "/api/view?filename=female_0_kmh.mp3&type=input&subfolder=&rand=0.9477482641492132"
+      "audioUI": "/api/view?filename=female_0_kmh.mp3&type=input&subfolder=&rand=0.8239929041597315"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -450,10 +450,6 @@
   },
   "92:226": {
     "inputs": {
-      "any_01": [
-        "92:130",
-        0
-      ],
       "any_02": [
         "92:225",
         0
@@ -495,15 +491,6 @@
     "class_type": "KSamplerSelect",
     "_meta": {
       "title": "KSamplerSelect"
-    }
-  },
-  "92:130": {
-    "inputs": {
-      "value": true
-    },
-    "class_type": "PrimitiveBoolean",
-    "_meta": {
-      "title": "Boolean"
     }
   },
   "92:197": {
@@ -1028,6 +1015,50 @@
       "title": "Any Switch (rgthree)"
     }
   },
+  "92:108": {
+    "inputs": {
+      "strength": 1,
+      "bypass": false,
+      "vae": [
+        "513",
+        0
+      ],
+      "image": [
+        "92:99",
+        0
+      ],
+      "latent": [
+        "92:152",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+      "title": "LTXVImgToVideoInplace"
+    }
+  },
+  "92:107": {
+    "inputs": {
+      "strength": 1,
+      "bypass": false,
+      "vae": [
+        "513",
+        0
+      ],
+      "image": [
+        "92:99",
+        0
+      ],
+      "latent": [
+        "92:43",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+      "title": "LTXVImgToVideoInplace"
+    }
+  },
   "92:176": {
     "inputs": {
       "switch": [
@@ -1046,6 +1077,15 @@
     "class_type": "ComfySwitchNode",
     "_meta": {
       "title": "Switch Video Input"
+    }
+  },
+  "92:289": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Boolean"
     }
   },
   "92:200": {
@@ -1068,7 +1108,7 @@
         0
       ],
       "on_true": [
-        "92:43",
+        "92:107",
         0
       ]
     },
@@ -1079,6 +1119,10 @@
   },
   "92:286": {
     "inputs": {
+      "any_01": [
+        "92:289",
+        0
+      ],
       "any_02": [
         "92:200",
         0
@@ -1126,7 +1170,7 @@
         0
       ],
       "on_true": [
-        "92:152",
+        "92:108",
         0
       ]
     },
