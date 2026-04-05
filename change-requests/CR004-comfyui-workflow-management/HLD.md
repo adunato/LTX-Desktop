@@ -231,22 +231,24 @@ The following improvements were made during CR003 development that impact the Co
 
 ### 9.5. Video Generation Pipeline Fields
 
-**Problem**: The AIO video workflow supports audio input but the mapping modal didn't expose it. Also added `negative_prompt` which both pipelines support.
+**Problem**: The mapping modal didn't expose `image_path` (image-to-video) or `audio_path` (audio-to-video), both of which are supported by the backend pipelines. Also added `negative_prompt`.
 
 **Solution** (`ComfyUIMappingModal.tsx`):
 - Added `negative_prompt` to `image_gen` and `video_gen` pipelines
-- Added `audio_path` to `video_gen` pipeline (optional — routed through `ComfyUIA2VPipeline` when audio is provided)
-- `video_path` is intentionally excluded from `video_gen` — video-to-video is not yet supported by the backend pipelines
+- Added `image_path` to `video_gen` pipeline (optional — `ComfyUIVideoPipeline` uploads the image for I2V)
+- Added `audio_path` to `video_gen` pipeline (optional — routes through `ComfyUIA2VPipeline` when audio is provided)
+- Added `image_path` aliases to `STANDARD_LTX_KEYS` in backend (`image`, `input_image`, `first_frame`, `conditioning_image`)
+- `video_path` is intentionally excluded — video-to-video is not yet supported by the backend pipelines
 
-**Note on `video_path`**: The AIO workflow contains `LoadVideo` nodes, but neither `ComfyUIVideoPipeline` nor `ComfyUIA2VPipeline` implements video upload/patching logic. Adding `video_path` support requires backend changes to `video_pipeline.py`/`a2v_pipeline.py` (upload via ComfyUI client + patch workflow inputs).
+**Note on `video_path`**: The AIO workflow contains `LoadVideo` nodes, but neither `ComfyUIVideoPipeline` nor `ComfyUIA2VPipeline` implements video upload/patching logic. Adding `video_path` support requires backend changes to `video_pipeline.py`/`a2v_pipeline.py`.
 
 ### 9.6. Updated Pipeline Field Definitions
 
 | Pipeline | Fields |
 |----------|--------|
 | **Image Generation** | prompt, negative_prompt, seed, width, height, num_inference_steps |
-| **Video Generation** | prompt, negative_prompt, seed, width, height, num_frames, frame_rate, audio_path |
+| **Video Generation** | prompt, negative_prompt, seed, width, height, num_frames, frame_rate, image_path, audio_path |
 | **Video Retake** | video_path, mask_path, prompt, seed, start_time, end_time |
 | **IC-LoRA** | prompt, seed, height, width, num_frames, frame_rate |
 
-Required fields per pipeline remain unchanged. `audio_path` in `video_gen` is optional.
+Required fields per pipeline remain unchanged. `image_path` and `audio_path` in `video_gen` are optional.

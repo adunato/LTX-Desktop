@@ -20,6 +20,7 @@ STANDARD_LTX_KEYS = {
     "frame_rate": ["frame_rate", "fps"],
     "num_inference_steps": ["steps", "num_inference_steps", "iterations"],
     "guidance_scale": ["cfg", "guidance_scale"],
+    "image_path": ["image", "input_image", "image_path", "first_frame", "conditioning_image"],
     "video_path": ["video", "input_video", "video_path"],
     "mask_path": ["mask", "input_mask", "mask_path"],
     "audio_path": ["audio", "input_audio", "audio_path"],
