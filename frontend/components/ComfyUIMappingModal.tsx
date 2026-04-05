@@ -99,6 +99,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const [search, setSearch] = useState('')
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Build color map for node types (class_type)
@@ -122,7 +123,9 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const inContainer = containerRef.current?.contains(e.target as Node)
+      const inDropdown = dropdownRef.current?.contains(e.target as Node)
+      if (!inContainer && !inDropdown) {
         setOpen(false)
         setDropdownPos(null)
       }
@@ -187,6 +190,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
       {/* Dropdown rendered via portal to escape overflow clipping */}
       {dropdownPos && createPortal(
         <div
+          ref={dropdownRef}
           className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl"
           style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 9999 }}
         >
