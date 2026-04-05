@@ -1,5 +1,7 @@
 import copy
+import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -8,6 +10,30 @@ from services.comfyui.workflow_parser import get_available_workflows, get_workfl
 from services.services_utils import ImagePipelineOutputLike
 
 logger = logging.getLogger(__name__)
+
+_DEBUG_DIR = Path(__file__).parent.parent.parent.parent / "debug_workflows"
+
+
+def _debug_dump_workflow(workflow_id: str, api_workflow: dict[str, Any]) -> None:
+    """Save patched api_workflow JSON to debug folder and log summary to console."""
+    try:
+        _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = _DEBUG_DIR / f"{workflow_id}_{timestamp}.json"
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(api_workflow, f, indent=2)
+        node_count = len(api_workflow)
+        patched = sum(
+            1 for nid, n in api_workflow.items()
+            for v in n.get("inputs", {}).values()
+            if not isinstance(v, list) or len(v) != 2
+        )
+        logger.info(
+            f"[ComfyUI Debug] Patched workflow '{workflow_id}' → {filepath} "
+            f"({node_count} nodes, {patched} inputs set)"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to dump debug workflow: {e}")
 
 class ComfyUIImagePipeline:
     """Adapts standard ComfyUI workflows to the ImageGenerationPipeline protocol."""
@@ -103,6 +129,9 @@ class ComfyUIImagePipeline:
         # 5. Submit and Poll
         if progress_callback:
             progress_callback("inference", 15)
+
+        # Debug: dump patched workflow before submission
+        _debug_dump_workflow(self.workflow_id, api_workflow)
 
         prompt_res = self.client.prompt(api_workflow)
         prompt_id = prompt_res.get("prompt_id")
