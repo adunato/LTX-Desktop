@@ -207,6 +207,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
                 value={search}
                 onValueChange={setSearch}
                 className="text-xs bg-zinc-800 text-zinc-200 placeholder:text-zinc-500 focus:outline-none px-3 py-2 w-full"
+                autoFocus
               />
             </div>
             <CommandList className="max-h-48 overflow-y-auto">
