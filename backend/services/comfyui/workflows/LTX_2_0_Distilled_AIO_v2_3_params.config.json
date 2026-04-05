@@ -32,10 +32,6 @@
     "audio_path": {
       "node": "123",
       "field": "audio"
-    },
-    "image_path": {
-      "node": "98",
-      "field": "image"
     }
   }
 }
