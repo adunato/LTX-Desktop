@@ -110,14 +110,18 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
     }
   }
 
+  const handleClose = () => {
+    setOpen(false)
+    setDropdownPos(null)
+  }
+
   const handleToggle = () => {
     if (!open && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
       setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width })
     } else {
-      setDropdownPos(null)
+      handleClose()
     }
-    setOpen(!open)
   }
 
   // Close dropdown on outside click
@@ -126,8 +130,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
       const inContainer = containerRef.current?.contains(e.target as Node)
       const inDropdown = dropdownRef.current?.contains(e.target as Node)
       if (!inContainer && !inDropdown) {
-        setOpen(false)
-        setDropdownPos(null)
+        handleClose()
       }
     }
     if (open) {
