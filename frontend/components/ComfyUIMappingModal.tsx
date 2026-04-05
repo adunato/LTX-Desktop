@@ -96,6 +96,7 @@ interface NodeSelectProps {
 function NodeSelect({ value, onChange, options }: NodeSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -117,6 +118,20 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
     if (open) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
+  // Calculate fixed position when dropdown opens to escape overflow clipping
+  useEffect(() => {
+    if (open && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      })
     }
   }, [open])
 
@@ -173,7 +188,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
 
       {/* Dropdown menu */}
       {open && (
-        <div className="absolute z-50 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl">
+        <div style={dropdownStyle} className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl">
           {/* Search input */}
           <div className="p-2 border-b border-zinc-800">
             <input
@@ -184,6 +199,7 @@ function NodeSelect({ value, onChange, options }: NodeSelectProps) {
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
+                  e.stopPropagation()
                   setOpen(false)
                 }
               }}
