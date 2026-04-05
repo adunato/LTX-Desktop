@@ -25,7 +25,7 @@
   },
   "109": {
     "inputs": {
-      "seed": -1
+      "seed": 0
     },
     "class_type": "Seed (rgthree)",
     "_meta": {
@@ -49,7 +49,7 @@
   "123": {
     "inputs": {
       "audio": "female_0_kmh.mp3",
-      "audioUI": "/api/view?filename=female_0_kmh.mp3&type=input&subfolder=&rand=0.4233427906145887"
+      "audioUI": "/api/view?filename=female_0_kmh.mp3&type=input&subfolder=&rand=0.9477482641492132"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -189,6 +189,24 @@
     "class_type": "PrimitiveString",
     "_meta": {
       "title": "Prompt"
+    }
+  },
+  "528": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "TextToVid Width"
+    }
+  },
+  "529": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "TextToVid Height"
     }
   },
   "92:3": {
@@ -432,6 +450,10 @@
   },
   "92:226": {
     "inputs": {
+      "any_01": [
+        "92:130",
+        0
+      ],
       "any_02": [
         "92:225",
         0
@@ -473,6 +495,15 @@
     "class_type": "KSamplerSelect",
     "_meta": {
       "title": "KSamplerSelect"
+    }
+  },
+  "92:130": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Boolean"
     }
   },
   "92:197": {
@@ -835,18 +866,6 @@
       "title": "Switch"
     }
   },
-  "92:89": {
-    "inputs": {
-      "width": 1280,
-      "height": 720,
-      "batch_size": 1,
-      "color": 0
-    },
-    "class_type": "EmptyImage",
-    "_meta": {
-      "title": "TexRes"
-    }
-  },
   "92:153": {
     "inputs": {
       "upscale_method": "lanczos",
@@ -1009,50 +1028,6 @@
       "title": "Any Switch (rgthree)"
     }
   },
-  "92:108": {
-    "inputs": {
-      "strength": 1,
-      "bypass": false,
-      "vae": [
-        "513",
-        0
-      ],
-      "image": [
-        "92:99",
-        0
-      ],
-      "latent": [
-        "92:152",
-        0
-      ]
-    },
-    "class_type": "LTXVImgToVideoInplace",
-    "_meta": {
-      "title": "LTXVImgToVideoInplace"
-    }
-  },
-  "92:107": {
-    "inputs": {
-      "strength": 1,
-      "bypass": false,
-      "vae": [
-        "513",
-        0
-      ],
-      "image": [
-        "92:99",
-        0
-      ],
-      "latent": [
-        "92:43",
-        0
-      ]
-    },
-    "class_type": "LTXVImgToVideoInplace",
-    "_meta": {
-      "title": "LTXVImgToVideoInplace"
-    }
-  },
   "92:176": {
     "inputs": {
       "switch": [
@@ -1071,15 +1046,6 @@
     "class_type": "ComfySwitchNode",
     "_meta": {
       "title": "Switch Video Input"
-    }
-  },
-  "92:289": {
-    "inputs": {
-      "value": true
-    },
-    "class_type": "PrimitiveBoolean",
-    "_meta": {
-      "title": "Boolean"
     }
   },
   "92:200": {
@@ -1102,7 +1068,7 @@
         0
       ],
       "on_true": [
-        "92:107",
+        "92:43",
         0
       ]
     },
@@ -1113,10 +1079,6 @@
   },
   "92:286": {
     "inputs": {
-      "any_01": [
-        "92:289",
-        0
-      ],
       "any_02": [
         "92:200",
         0
@@ -1164,7 +1126,7 @@
         0
       ],
       "on_true": [
-        "92:108",
+        "92:152",
         0
       ]
     },
@@ -1721,6 +1683,24 @@
     "class_type": "SamplerCustomAdvanced",
     "_meta": {
       "title": "SamplerCustomAdvanced"
+    }
+  },
+  "92:89": {
+    "inputs": {
+      "width": [
+        "528",
+        0
+      ],
+      "height": [
+        "529",
+        0
+      ],
+      "batch_size": 1,
+      "color": 0
+    },
+    "class_type": "EmptyImage",
+    "_meta": {
+      "title": "TexRes"
     }
   }
 }

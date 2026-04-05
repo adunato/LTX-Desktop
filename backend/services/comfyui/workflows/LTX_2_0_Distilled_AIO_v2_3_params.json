@@ -1,7 +1,7 @@
 {
   "98": {
     "inputs": {
-      "image": "120821267.png"
+      "image": "shot_1_1.jpg"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -14,7 +14,7 @@
       "resize_type.megapixels": 1,
       "scale_method": "lanczos",
       "input": [
-        "98",
+        "518",
         0
       ]
     },
@@ -25,7 +25,7 @@
   },
   "109": {
     "inputs": {
-      "seed": -1
+      "seed": 0
     },
     "class_type": "Seed (rgthree)",
     "_meta": {
@@ -49,7 +49,7 @@
   "123": {
     "inputs": {
       "audio": "female_0_kmh.mp3",
-      "audioUI": "/api/view?filename=female_0_kmh.mp3&type=input&subfolder=&rand=0.4193550993547288"
+      "audioUI": "/api/view?filename=female_0_kmh.mp3&type=input&subfolder=&rand=0.9477482641492132"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -164,9 +164,57 @@
       "title": "DualCLIPLoader"
     }
   },
+  "518": {
+    "inputs": {
+      "image": "pasted/image (21).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "525": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Video Length"
+    }
+  },
+  "527": {
+    "inputs": {
+      "value": "A woman posing for the camera"
+    },
+    "class_type": "PrimitiveString",
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "528": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "TextToVid Width"
+    }
+  },
+  "529": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "TextToVid Height"
+    }
+  },
   "92:3": {
     "inputs": {
-      "text": "A pretty girl saying \"Hello, it's nice to meet you\"",
+      "text": [
+        "527",
+        0
+      ],
       "clip": [
         "515",
         0
@@ -418,7 +466,10 @@
   },
   "92:242": {
     "inputs": {
-      "value": 5
+      "value": [
+        "525",
+        0
+      ]
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -815,18 +866,6 @@
       "title": "Switch"
     }
   },
-  "92:89": {
-    "inputs": {
-      "width": 1280,
-      "height": 720,
-      "batch_size": 1,
-      "color": 0
-    },
-    "class_type": "EmptyImage",
-    "_meta": {
-      "title": "TexRes"
-    }
-  },
   "92:153": {
     "inputs": {
       "upscale_method": "lanczos",
@@ -1065,7 +1104,7 @@
   },
   "92:290": {
     "inputs": {
-      "text": "False",
+      "text": "True",
       "anything": [
         "92:286",
         0
@@ -1644,6 +1683,24 @@
     "class_type": "SamplerCustomAdvanced",
     "_meta": {
       "title": "SamplerCustomAdvanced"
+    }
+  },
+  "92:89": {
+    "inputs": {
+      "width": [
+        "528",
+        0
+      ],
+      "height": [
+        "529",
+        0
+      ],
+      "batch_size": 1,
+      "color": 0
+    },
+    "class_type": "EmptyImage",
+    "_meta": {
+      "title": "TexRes"
     }
   }
 }
