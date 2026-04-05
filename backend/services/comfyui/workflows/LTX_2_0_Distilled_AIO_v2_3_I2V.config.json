@@ -25,17 +25,13 @@
       "node": "92:128",
       "field": "value"
     },
-    "video_path": {
-      "node": "127",
-      "field": "file"
+    "image_path": {
+      "node": "98",
+      "field": "image"
     },
     "audio_path": {
       "node": "123",
       "field": "audio"
-    },
-    "image_path": {
-      "node": "98",
-      "field": "image"
     }
   }
 }

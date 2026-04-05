@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import re
@@ -248,8 +249,72 @@ def get_available_workflows() -> list[dict[str, Any]]:
                 
         except Exception as e:
             logger.error(f"Failed to parse workflow {file_path}: {e}")
-            
+
     return workflows
+
+
+def build_api_workflow(
+    workflow_id: str,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Convert workflow to ComfyUI API format and patch with given parameters.
+
+    Returns the api_workflow dict that would be sent to ComfyUI /prompt endpoint.
+    Does NOT upload files or submit — safe for preview/debugging.
+    """
+    graph_data = get_workflow(workflow_id)
+    if not graph_data:
+        raise FileNotFoundError(f"Workflow '{workflow_id}' not found")
+
+    wf_meta = next((w for w in get_available_workflows() if w["id"] == workflow_id), None)
+    ui_mapping: dict[str, Any] = wf_meta.get("ui_mapping", {}) if wf_meta else {}
+
+    api_workflow: dict[str, Any] = {}
+    nodes = graph_data.get("nodes")
+
+    def _normalize_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+        normalized = copy.deepcopy(inputs)
+        for v in normalized.values():
+            if isinstance(v, list) and len(v) == 2 and isinstance(v[0], (int, str)):
+                v[0] = str(v[0])
+        return normalized
+
+    if isinstance(nodes, list):
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_type = str(node.get("type", ""))
+            if node_type == "LTX_UI_Group":
+                continue
+            node_id = str(node["id"])
+            api_workflow[node_id] = {
+                "class_type": node_type,
+                "inputs": _normalize_inputs(node.get("inputs", {}))
+            }
+    else:
+        for node_id, node in graph_data.items():
+            if not isinstance(node, dict):
+                continue
+            node_type = node.get("class_type", "")
+            if node_type == "LTX_UI_Group":
+                continue
+            api_workflow[str(node_id)] = {
+                "class_type": node_type,
+                "inputs": _normalize_inputs(node.get("inputs", {}))
+            }
+
+    # Patch parameters via UI mappings
+    if params:
+        for ltx_key, value in params.items():
+            mapping = ui_mapping.get(ltx_key)
+            if mapping:
+                nid = str(mapping["node"])
+                field = mapping["field"]
+                if nid in api_workflow:
+                    api_workflow[nid]["inputs"][field] = value
+
+    return api_workflow
+
 
 def save_workflow_config(workflow_id: str, config: dict[str, Any]) -> None:
     config_path = WORKFLOWS_DIR / f"{workflow_id}.config.json"

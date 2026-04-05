@@ -12,6 +12,7 @@ from services.comfyui.workflow_parser import (
     delete_workflow,
     rename_workflow,
     duplicate_workflow,
+    build_api_workflow,
     WORKFLOWS_DIR
 )
 
@@ -104,5 +105,27 @@ def duplicate_workflow_endpoint(workflow_id: str, body: DuplicateRequest | None 
     try:
         new_id = duplicate_workflow(workflow_id, body.name if body else None)
         return {"status": "success", "id": new_id}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+
+@router.post("/{workflow_id}/preview")
+def preview_workflow(workflow_id: str, params: dict[str, Any] = Body(default_factory=dict)):
+    """Build and return the patched ComfyUI API workflow without submitting it.
+
+    POST body should contain key-value pairs matching the UI mapping keys,
+    e.g. {"prompt": "hello", "seed": 42, "width": 1024, ...}
+
+    Returns the full api_workflow JSON that would be sent to ComfyUI /prompt.
+    """
+    _validate_workflow_id(workflow_id)
+
+    workflow_path = WORKFLOWS_DIR / f"{workflow_id}.json"
+    if not workflow_path.exists():
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    try:
+        api_workflow = build_api_workflow(workflow_id, params or None)
+        return {"workflow_id": workflow_id, "api_workflow": api_workflow}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Workflow not found")
