@@ -24,6 +24,14 @@
     "frame_rate": {
       "node": "92:128",
       "field": "value"
+    },
+    "video_path": {
+      "node": "127",
+      "field": "file"
+    },
+    "audio_path": {
+      "node": "123",
+      "field": "audio"
     }
   }
 }

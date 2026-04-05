@@ -231,20 +231,22 @@ The following improvements were made during CR003 development that impact the Co
 
 ### 9.5. Video Generation Pipeline Fields
 
-**Problem**: The AIO video workflow supports video and audio input, but the mapping modal only showed basic fields (prompt, seed, width, height, frames, fps).
+**Problem**: The AIO video workflow supports audio input but the mapping modal didn't expose it. Also added `negative_prompt` which both pipelines support.
 
 **Solution** (`ComfyUIMappingModal.tsx`):
 - Added `negative_prompt` to `image_gen` and `video_gen` pipelines
-- Added `video_path` and `audio_path` to `video_gen` pipeline (optional, not required)
-- `video_gen` fields now: `prompt`, `negative_prompt`, `seed`, `width`, `height`, `num_frames`, `frame_rate`, `video_path`, `audio_path`
+- Added `audio_path` to `video_gen` pipeline (optional — routed through `ComfyUIA2VPipeline` when audio is provided)
+- `video_path` is intentionally excluded from `video_gen` — video-to-video is not yet supported by the backend pipelines
+
+**Note on `video_path`**: The AIO workflow contains `LoadVideo` nodes, but neither `ComfyUIVideoPipeline` nor `ComfyUIA2VPipeline` implements video upload/patching logic. Adding `video_path` support requires backend changes to `video_pipeline.py`/`a2v_pipeline.py` (upload via ComfyUI client + patch workflow inputs).
 
 ### 9.6. Updated Pipeline Field Definitions
 
 | Pipeline | Fields |
 |----------|--------|
 | **Image Generation** | prompt, negative_prompt, seed, width, height, num_inference_steps |
-| **Video Generation** | prompt, negative_prompt, seed, width, height, num_frames, frame_rate, video_path, audio_path |
+| **Video Generation** | prompt, negative_prompt, seed, width, height, num_frames, frame_rate, audio_path |
 | **Video Retake** | video_path, mask_path, prompt, seed, start_time, end_time |
 | **IC-LoRA** | prompt, seed, height, width, num_frames, frame_rate |
 
-Required fields per pipeline remain unchanged. `video_path` and `audio_path` in `video_gen` are optional.
+Required fields per pipeline remain unchanged. `audio_path` in `video_gen` is optional.

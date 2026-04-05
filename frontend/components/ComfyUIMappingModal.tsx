@@ -35,7 +35,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 const PIPELINE_FIELDS: Record<string, string[]> = {
   image_gen: ['prompt', 'negative_prompt', 'seed', 'width', 'height', 'num_inference_steps'],
-  video_gen: ['prompt', 'negative_prompt', 'seed', 'width', 'height', 'num_frames', 'frame_rate', 'video_path', 'audio_path'],
+  video_gen: ['prompt', 'negative_prompt', 'seed', 'width', 'height', 'num_frames', 'frame_rate', 'audio_path'],
   retake: ['video_path', 'mask_path', 'prompt', 'seed', 'start_time', 'end_time'],
   ic_lora: ['prompt', 'seed', 'height', 'width', 'num_frames', 'frame_rate'],
 }
