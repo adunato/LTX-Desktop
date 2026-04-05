@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import shutil
 from pathlib import Path
 from typing import Any, cast
@@ -52,7 +53,54 @@ def _get_workflow_config(workflow_id: str) -> dict[str, Any]:
             pass
     return {}
 
+def _sanitize_workflow_id(workflow_id: str) -> str:
+    """Sanitize workflow ID to only contain URL-safe characters."""
+    # Replace any character that's not alphanumeric, underscore, or hyphen with underscore
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", workflow_id)
+    # Remove consecutive underscores
+    safe_id = re.sub(r"_+", "_", safe_id)
+    # Remove leading/trailing underscores
+    return safe_id.strip("_")
+
+
+def _migrate_invalid_workflow_files() -> None:
+    """Rename workflow files with invalid IDs to use safe characters."""
+    if not WORKFLOWS_DIR.exists():
+        return
+    
+    for file_path in WORKFLOWS_DIR.glob("*.json"):
+        if file_path.name.endswith(".config.json"):
+            continue  # Skip config files, they'll be handled with their workflow
+        
+        old_stem = file_path.stem
+        safe_stem = _sanitize_workflow_id(old_stem)
+        
+        if old_stem != safe_stem:
+            new_path = file_path.with_name(f"{safe_stem}.json")
+            config_path = file_path.with_name(f"{old_stem}.config.json")
+            new_config_path = file_path.with_name(f"{safe_stem}.config.json")
+            
+            # Handle collision for the new name
+            if new_path.exists():
+                counter = 1
+                while new_path.exists():
+                    new_path = file_path.with_name(f"{safe_stem}_{counter}.json")
+                    new_config_path = file_path.with_name(f"{safe_stem}_{counter}.config.json")
+                    counter += 1
+            
+            try:
+                file_path.rename(new_path)
+                if config_path.exists():
+                    config_path.rename(new_config_path)
+                logger.info(f"Migrated workflow file: {old_stem} -> {new_path.stem}")
+            except Exception as e:
+                logger.error(f"Failed to migrate {old_stem}: {e}")
+
+
 def get_available_workflows() -> list[dict[str, Any]]:
+    """Get list of available workflows, migrating invalid filenames on first run."""
+    # Run migration once to fix any invalid workflow IDs
+    _migrate_invalid_workflow_files()
     workflows: list[dict[str, Any]] = []
     if not WORKFLOWS_DIR.exists():
         WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
@@ -266,15 +314,24 @@ def import_workflow(file_path: Path, original_filename: str | None = None, name:
         raise ValueError("File does not exist")
 
     base_filename = original_filename if original_filename else file_path.name
-    target_path = WORKFLOWS_DIR / base_filename
+    
+    # Sanitize filename to only allow safe characters for workflow IDs
+    stem = Path(base_filename).stem
+    suffix = Path(base_filename).suffix
+    # Replace any character that's not alphanumeric, underscore, or hyphen with underscore
+    safe_stem = re.sub(r"[^a-zA-Z0-9_-]", "_", stem)
+    # Remove consecutive underscores
+    safe_stem = re.sub(r"_+", "_", safe_stem)
+    # Remove leading/trailing underscores
+    safe_stem = safe_stem.strip("_")
+    
+    target_path = WORKFLOWS_DIR / f"{safe_stem}{suffix}"
 
     # Handle collision
     if target_path.exists():
-        stem = target_path.stem
-        suffix = target_path.suffix  # .json
         counter = 1
         while target_path.exists():
-            target_path = WORKFLOWS_DIR / f"{stem}_{counter}{suffix}"
+            target_path = WORKFLOWS_DIR / f"{safe_stem}_{counter}{suffix}"
             counter += 1
 
     # Copy file
