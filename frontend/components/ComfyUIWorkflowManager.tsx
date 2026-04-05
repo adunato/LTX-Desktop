@@ -89,9 +89,13 @@ export function ComfyUIWorkflowManager() {
       const res = await deleteWorkflow(workflowId)
       if (res.ok) {
         await refreshWorkflows()
+      } else {
+        const data = await res.json().catch(() => null)
+        setError(data?.error || `Failed to delete workflow '${workflowName}'.`)
       }
     } catch (e) {
       console.error('Failed to delete workflow', e)
+      setError(`Failed to delete workflow '${workflowName}'.`)
     }
   }
 
