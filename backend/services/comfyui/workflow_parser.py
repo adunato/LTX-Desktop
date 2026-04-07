@@ -197,8 +197,7 @@ def get_available_workflows() -> list[dict[str, Any]]:
             else:
                 # API Format (flat dict keyed by node ID).
                 # API format flattens subgraphs — there's no group info.
-                # Use the field name as the primary label so it's easy to scan,
-                # and store the full node path separately for display.
+                # Use the node_title with field name for clarity in the mapping UI.
                 for node_id, node in data.items():
                     if not isinstance(node, dict):
                         continue
@@ -216,7 +215,7 @@ def get_available_workflows() -> list[dict[str, Any]]:
                             if field_name == "value":
                                 label = node_title
                             else:
-                                label = field_name
+                                label = f"{node_title} \u2192 {field_name}"
 
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
