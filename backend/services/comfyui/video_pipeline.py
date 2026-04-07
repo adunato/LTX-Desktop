@@ -183,23 +183,23 @@ class ComfyUIVideoPipeline:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for _node_id, node_output in outputs.items():
-            # Check for video outputs
-            if "videos" in node_output:
-                for vid_meta in node_output["videos"]:
-                    video_bytes = self.client.view_video(
-                        vid_meta["filename"],
-                        vid_meta.get("subfolder", ""),
-                        vid_meta.get("type", "")
-                    )
-                    output_path = self.outputs_dir / f"comfyui_video_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
-                    output_path.write_bytes(video_bytes)
-                    break  # Take first video
-            
-            # Also check images node (some workflows output as images sequence)
-            if "images" in node_output and output_path is None:
-                # For video workflows, images might be frames
-                # We'll skip this and only use videos node
-                pass
+            # Check for video outputs (native ComfyUI uses "videos", VHS_VideoCombine uses "gifs")
+            for output_key in ("videos", "gifs"):
+                if output_key in node_output:
+                    for vid_meta in node_output[output_key]:
+                        video_bytes = self.client.view_video(
+                            vid_meta["filename"],
+                            vid_meta.get("subfolder", ""),
+                            vid_meta.get("type", "")
+                        )
+                        output_path = self.outputs_dir / f"comfyui_video_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
+                        output_path.write_bytes(video_bytes)
+                        break  # Take first video
+                    if output_path is not None:
+                        break  # Found a video, stop searching
+
+            if output_path is not None:
+                break  # Found a video, stop searching
 
         if output_path is None:
             raise RuntimeError("ComfyUI workflow did not produce a video output")
