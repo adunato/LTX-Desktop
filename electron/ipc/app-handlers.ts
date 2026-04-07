@@ -20,16 +20,19 @@ function getSetupStatus(settingsPath: string): { needsSetup: boolean; needsLicen
     return { needsSetup: false, needsLicense: false }
   }
 
-  if (!fs.existsSync(settingsPath)) {
-    return { needsSetup: true, needsLicense: true }
-  }
   try {
+    if (!fs.existsSync(settingsPath)) {
+      return { needsSetup: true, needsLicense: true }
+    }
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
     return {
       needsSetup: !settings.setupComplete,
       needsLicense: !settings.licenseAccepted,
     }
   } catch {
+    // If we can't read/parse the file, treat it as needing setup
+    // but log a warning in case this is unexpected
+    console.warn(`[app-handlers] Could not read app state from ${settingsPath}, treating as needing setup`)
     return { needsSetup: true, needsLicense: true }
   }
 }
