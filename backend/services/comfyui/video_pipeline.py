@@ -158,6 +158,7 @@ class ComfyUIVideoPipeline:
 
         prompt_res = self.client.prompt(api_workflow)
         prompt_id = prompt_res.get("prompt_id")
+        logger.info(f"ComfyUI prompt response: {prompt_res}")
         if not prompt_id:
             raise RuntimeError("ComfyUI did not return a prompt_id")
 
@@ -168,8 +169,10 @@ class ComfyUIVideoPipeline:
                 raise RuntimeError("Generation was cancelled")
 
             history = self.client.get_history(prompt_id)
+            logger.info(f"ComfyUI history keys: {list(history.keys())}")
             if prompt_id in history:
                 outputs = history[prompt_id].get("outputs", {})
+                logger.info(f"ComfyUI prompt {prompt_id} outputs: {list(outputs.keys())}")
                 break
             time.sleep(1)
 
@@ -182,10 +185,21 @@ class ComfyUIVideoPipeline:
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+        # DEBUG: Log the full outputs structure to understand what ComfyUI returns
+        logger.info(f"ComfyUI history outputs keys: {list(outputs.keys())}")
+        for node_id, node_output in outputs.items():
+            logger.info(f"  Node {node_id} output keys: {list(node_output.keys())}")
+            for key, value in node_output.items():
+                if isinstance(value, list) and len(value) > 0:
+                    logger.info(f"    {key}: {value[0]}")  # Log first item as sample
+                else:
+                    logger.info(f"    {key}: {value}")
+
         for _node_id, node_output in outputs.items():
             # Check for video outputs (native ComfyUI uses "videos", VHS_VideoCombine uses "gifs")
             for output_key in ("videos", "gifs"):
                 if output_key in node_output:
+                    logger.info(f"Found {output_key} in node {_node_id}: {node_output[output_key]}")
                     for vid_meta in node_output[output_key]:
                         video_bytes = self.client.view_video(
                             vid_meta["filename"],
@@ -194,6 +208,7 @@ class ComfyUIVideoPipeline:
                         )
                         output_path = self.outputs_dir / f"comfyui_video_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
                         output_path.write_bytes(video_bytes)
+                        logger.info(f"Saved video to {output_path}")
                         break  # Take first video
                     if output_path is not None:
                         break  # Found a video, stop searching
@@ -202,6 +217,6 @@ class ComfyUIVideoPipeline:
                 break  # Found a video, stop searching
 
         if output_path is None:
-            raise RuntimeError("ComfyUI workflow did not produce a video output")
+            raise RuntimeError(f"ComfyUI workflow did not produce a video output. Outputs found: {list(outputs.keys())}")
 
         return str(output_path)
