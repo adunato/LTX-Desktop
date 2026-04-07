@@ -196,8 +196,11 @@ class ComfyUIVideoPipeline:
                     logger.info(f"    {key}: {value}")
 
         for _node_id, node_output in outputs.items():
-            # Check for video outputs (native ComfyUI uses "videos", VHS_VideoCombine uses "gifs")
-            for output_key in ("videos", "gifs"):
+            # Check for video outputs in order of priority:
+            # 1. "gifs" - VHS_VideoCombine (VideoHelperSuite extension)
+            # 2. "videos" - Some custom video nodes
+            # 3. "images" with animated: [true] - Native ComfyUI video nodes (SaveVideo, SaveAnimatedWEBP)
+            for output_key in ("gifs", "videos"):
                 if output_key in node_output:
                     logger.info(f"Found {output_key} in node {_node_id}: {node_output[output_key]}")
                     for vid_meta in node_output[output_key]:
@@ -212,6 +215,22 @@ class ComfyUIVideoPipeline:
                         break  # Take first video
                     if output_path is not None:
                         break  # Found a video, stop searching
+
+            # Check for animated images (native ComfyUI SaveVideo node uses "images" key)
+            if output_path is None and "images" in node_output:
+                is_animated = node_output.get("animated") == [True]
+                if is_animated:
+                    logger.info(f"Found animated images in node {_node_id}: {node_output['images']}")
+                    for img_meta in node_output["images"]:
+                        video_bytes = self.client.view_video(
+                            img_meta["filename"],
+                            img_meta.get("subfolder", ""),
+                            img_meta.get("type", "")
+                        )
+                        output_path = self.outputs_dir / f"comfyui_video_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
+                        output_path.write_bytes(video_bytes)
+                        logger.info(f"Saved video to {output_path}")
+                        break  # Take first video
 
             if output_path is not None:
                 break  # Found a video, stop searching
