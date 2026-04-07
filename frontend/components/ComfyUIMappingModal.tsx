@@ -44,7 +44,7 @@ const PIPELINE_FIELDS: Record<string, string[]> = {
 
 const REQUIRED_KEYS: Record<string, string[]> = {
   image_gen: ['prompt', 'seed', 'width', 'height'],
-  video_gen: ['prompt', 'seed', 'width', 'height', 'num_frames', 'frame_rate'],
+  video_gen: [], // All mappings are optional for video generation
   retake: ['video_path', 'mask_path', 'prompt', 'seed', 'start_time', 'end_time'],
   ic_lora: ['prompt', 'seed', 'height', 'width', 'num_frames', 'frame_rate'],
 }
