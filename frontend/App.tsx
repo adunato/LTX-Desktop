@@ -214,6 +214,12 @@ function AppContent() {
       return
     }
 
+    // If runtime policy hasn't loaded yet, don't show the model gate (prevents race with bypass)
+    if (!runtimePolicyLoaded) {
+      setRequiredModelsGate('ready')
+      return
+    }
+
     let cancelled = false
     setRequiredModelsGate('checking')
 
@@ -239,6 +245,7 @@ function AppContent() {
     areRequiredModelsDownloaded,
     backendLoading,
     forceApiGenerations,
+    runtimePolicyLoaded,
     setupState,
     status.connected,
     waitingForRuntimePolicy,
@@ -260,7 +267,10 @@ function AppContent() {
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
   const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
-  const shouldBlockForLtxKey = shouldShowForcedFirstRunUpsell || shouldShowGlobalForcedUpsell
+  
+  // In dev mode with bypass enabled, wait for runtime policy to load before showing any API key gates.
+  // This prevents the default forceApiGenerations=true from triggering the gateway prematurely.
+  const shouldBlockForLtxKey = runtimePolicyLoaded && (shouldShowForcedFirstRunUpsell || shouldShowGlobalForcedUpsell)
 
   useEffect(() => {
     if (shouldBlockForLtxKey && apiGatewayRequest === null) {

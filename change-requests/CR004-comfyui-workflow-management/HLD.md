@@ -186,3 +186,69 @@ Frontend: Refresh workflow list → name updated
 
 - CR001: ComfyUI Foundation (workflow parser, routes, settings)
 - CR003: ComfyUI Video Generation (uses workflow_id routing)
+
+---
+
+## 9. CR003 Session Changes (Video Generation Workflow Mapping Improvements)
+
+The following improvements were made during CR003 development that impact the ComfyUI workflow management system:
+
+### 9.1. Workflow ID Sanitization
+
+**Problem**: Workflow files with spaces and special characters (e.g., `LTX 2.0 Distilled AIO v2.3 (params).json`) caused 400 Bad Request errors on delete because the backend validation regex only allowed `[a-zA-Z0-9_-]`.
+
+**Solution** (`workflow_parser.py`):
+- Sanitize workflow IDs during import by replacing invalid characters with underscores
+- Automatic migration on startup renames existing files with invalid IDs
+- `LTX 2.0 Distilled AIO v2.3 (params).json` → `LTX_2_0_Distilled_AIO_v2_3_params.json`
+
+### 9.2. Delete Button Error Handling
+
+**Problem**: The delete button silently failed when the backend returned an error (no feedback to user).
+
+**Solution** (`ComfyUIWorkflowManager.tsx`):
+- Display error message from backend when deletion fails
+- Show generic failure message if backend doesn't provide details
+
+### 9.3. Dropdown Search
+
+**Problem**: Long workflow parameter lists were hard to navigate.
+
+**Solution** (`ComfyUIMappingModal.tsx`):
+- Added case-insensitive search input to all dropdowns
+- Search matches against label, `node_title`, and `class_type`
+- Auto-focuses on open, clears on close, Escape closes dropdown
+- "No matching nodes" message when no results
+
+### 9.4. Dropdown Display Format (class_type as Tag)
+
+**Problem**: Node type tags were extracted heuristically from `node_title` (e.g., "CLIP Text Encode (Prompt)" → "CLIP Text Encode"), which was fragile and inconsistent.
+
+**Solution**:
+- Backend now includes `class_type` from the workflow JSON in `all_inputs` (e.g., `PrimitiveInt`, `LoadVideo`)
+- Frontend displays `_meta.title` as the label (left side) and `class_type` as a colored tag (right side)
+- Example: `Prompt` label + `PrimitiveString` tag
+
+### 9.5. Video Generation Pipeline Fields
+
+**Problem**: The mapping modal didn't expose `image_path` (image-to-video) or `audio_path` (audio-to-video), both of which are supported by the backend pipelines. Also added `negative_prompt`.
+
+**Solution** (`ComfyUIMappingModal.tsx`):
+- Added `negative_prompt` to `image_gen` and `video_gen` pipelines
+- Added `image_path` to `video_gen` pipeline (optional — `ComfyUIVideoPipeline` uploads the image for I2V)
+- Added `audio_path` to `video_gen` pipeline (optional — routes through `ComfyUIA2VPipeline` when audio is provided)
+- Added `image_path` aliases to `STANDARD_LTX_KEYS` in backend (`image`, `input_image`, `first_frame`, `conditioning_image`)
+- `video_path` is intentionally excluded — video-to-video is not yet supported by the backend pipelines
+
+**Note on `video_path`**: The AIO workflow contains `LoadVideo` nodes, but neither `ComfyUIVideoPipeline` nor `ComfyUIA2VPipeline` implements video upload/patching logic. Adding `video_path` support requires backend changes to `video_pipeline.py`/`a2v_pipeline.py`.
+
+### 9.6. Updated Pipeline Field Definitions
+
+| Pipeline | Fields |
+|----------|--------|
+| **Image Generation** | prompt, negative_prompt, seed, width, height, num_inference_steps |
+| **Video Generation** | prompt, negative_prompt, seed, width, height, num_frames, frame_rate, image_path, audio_path |
+| **Video Retake** | video_path, mask_path, prompt, seed, start_time, end_time |
+| **IC-LoRA** | prompt, seed, height, width, num_frames, frame_rate |
+
+Required fields per pipeline remain unchanged. `image_path` and `audio_path` in `video_gen` are optional.

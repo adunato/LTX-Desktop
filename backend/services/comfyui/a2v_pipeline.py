@@ -1,5 +1,7 @@
 import copy
+import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +9,30 @@ from services.comfyui.comfyui_client import ComfyUIClient
 from services.comfyui.workflow_parser import get_available_workflows, get_workflow
 
 logger = logging.getLogger(__name__)
+
+_DEBUG_DIR = Path(__file__).parent.parent.parent.parent / "debug_workflows"
+
+
+def _debug_dump_workflow(workflow_id: str, api_workflow: dict[str, Any]) -> None:
+    """Save patched api_workflow JSON to debug folder and log summary to console."""
+    try:
+        _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = _DEBUG_DIR / f"{workflow_id}_{timestamp}.json"
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(api_workflow, f, indent=2)
+        node_count = len(api_workflow)
+        patched = sum(
+            1 for nid, n in api_workflow.items()
+            for v in n.get("inputs", {}).values()
+            if not isinstance(v, list) or len(v) != 2
+        )
+        logger.info(
+            f"[ComfyUI Debug] Patched workflow '{workflow_id}' → {filepath} "
+            f"({node_count} nodes, {patched} inputs set)"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to dump debug workflow: {e}")
 
 
 class ComfyUIA2VPipeline:
@@ -142,6 +168,9 @@ class ComfyUIA2VPipeline:
         if progress_callback:
             progress_callback("inference", 20)
 
+        # Debug: dump patched workflow before submission
+        _debug_dump_workflow(self.workflow_id, api_workflow)
+
         prompt_res = self.client.prompt(api_workflow)
         prompt_id = prompt_res.get("prompt_id")
         if not prompt_id:
@@ -169,23 +198,40 @@ class ComfyUIA2VPipeline:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for _node_id, node_output in outputs.items():
-            # Check for video outputs
-            if "videos" in node_output:
-                for vid_meta in node_output["videos"]:
-                    video_bytes = self.client.view_video(
-                        vid_meta["filename"],
-                        vid_meta.get("subfolder", ""),
-                        vid_meta.get("type", "")
-                    )
-                    output_path = self.outputs_dir / f"comfyui_a2v_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
-                    output_path.write_bytes(video_bytes)
-                    break  # Take first video
-            
-            # Also check images node (some workflows output as images sequence)
-            if "images" in node_output and output_path is None:
-                # For video workflows, images might be frames
-                # We'll skip this and only use videos node
-                pass
+            # Check for video outputs in order of priority:
+            # 1. "gifs" - VHS_VideoCombine (VideoHelperSuite extension)
+            # 2. "videos" - Some custom video nodes
+            # 3. "images" with animated: [true] - Native ComfyUI video nodes (SaveVideo, SaveAnimatedWEBP)
+            for output_key in ("gifs", "videos"):
+                if output_key in node_output:
+                    for vid_meta in node_output[output_key]:
+                        video_bytes = self.client.view_video(
+                            vid_meta["filename"],
+                            vid_meta.get("subfolder", ""),
+                            vid_meta.get("type", "")
+                        )
+                        output_path = self.outputs_dir / f"comfyui_a2v_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
+                        output_path.write_bytes(video_bytes)
+                        break  # Take first video
+                    if output_path is not None:
+                        break  # Found a video, stop searching
+
+            # Check for animated images (native ComfyUI SaveVideo node uses "images" key)
+            if output_path is None and "images" in node_output:
+                is_animated = node_output.get("animated") == [True]
+                if is_animated:
+                    for img_meta in node_output["images"]:
+                        video_bytes = self.client.view_video(
+                            img_meta["filename"],
+                            img_meta.get("subfolder", ""),
+                            img_meta.get("type", "")
+                        )
+                        output_path = self.outputs_dir / f"comfyui_a2v_{timestamp}_{uuid.uuid4().hex[:8]}.mp4"
+                        output_path.write_bytes(video_bytes)
+                        break  # Take first video
+
+            if output_path is not None:
+                break  # Found a video, stop searching
 
         if output_path is None:
             raise RuntimeError("ComfyUI workflow did not produce a video output")

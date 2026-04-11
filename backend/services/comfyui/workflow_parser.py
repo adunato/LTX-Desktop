@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import shutil
 from pathlib import Path
 from typing import Any, cast
@@ -19,6 +20,7 @@ STANDARD_LTX_KEYS = {
     "frame_rate": ["frame_rate", "fps"],
     "num_inference_steps": ["steps", "num_inference_steps", "iterations"],
     "guidance_scale": ["cfg", "guidance_scale"],
+    "image_path": ["image", "input_image", "image_path", "first_frame", "conditioning_image"],
     "video_path": ["video", "input_video", "video_path"],
     "mask_path": ["mask", "input_mask", "mask_path"],
     "audio_path": ["audio", "input_audio", "audio_path"],
@@ -28,7 +30,7 @@ STANDARD_LTX_KEYS = {
 
 PIPELINE_REQUIRED_KEYS = {
     "image_gen": ["prompt", "seed", "height", "width"],
-    "video_gen": ["prompt", "seed", "height", "width", "num_frames", "frame_rate"],
+    "video_gen": [],  # All mappings are optional for video generation
     "retake": ["video_path", "mask_path", "prompt", "seed", "start_time", "end_time"],
     "ic_lora": ["prompt", "seed", "height", "width", "num_frames", "frame_rate"],
 }
@@ -52,7 +54,54 @@ def _get_workflow_config(workflow_id: str) -> dict[str, Any]:
             pass
     return {}
 
+def _sanitize_workflow_id(workflow_id: str) -> str:
+    """Sanitize workflow ID to only contain URL-safe characters."""
+    # Replace any character that's not alphanumeric, underscore, or hyphen with underscore
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", workflow_id)
+    # Remove consecutive underscores
+    safe_id = re.sub(r"_+", "_", safe_id)
+    # Remove leading/trailing underscores
+    return safe_id.strip("_")
+
+
+def _migrate_invalid_workflow_files() -> None:
+    """Rename workflow files with invalid IDs to use safe characters."""
+    if not WORKFLOWS_DIR.exists():
+        return
+    
+    for file_path in WORKFLOWS_DIR.glob("*.json"):
+        if file_path.name.endswith(".config.json"):
+            continue  # Skip config files, they'll be handled with their workflow
+        
+        old_stem = file_path.stem
+        safe_stem = _sanitize_workflow_id(old_stem)
+        
+        if old_stem != safe_stem:
+            new_path = file_path.with_name(f"{safe_stem}.json")
+            config_path = file_path.with_name(f"{old_stem}.config.json")
+            new_config_path = file_path.with_name(f"{safe_stem}.config.json")
+            
+            # Handle collision for the new name
+            if new_path.exists():
+                counter = 1
+                while new_path.exists():
+                    new_path = file_path.with_name(f"{safe_stem}_{counter}.json")
+                    new_config_path = file_path.with_name(f"{safe_stem}_{counter}.config.json")
+                    counter += 1
+            
+            try:
+                file_path.rename(new_path)
+                if config_path.exists():
+                    config_path.rename(new_config_path)
+                logger.info(f"Migrated workflow file: {old_stem} -> {new_path.stem}")
+            except Exception as e:
+                logger.error(f"Failed to migrate {old_stem}: {e}")
+
+
 def get_available_workflows() -> list[dict[str, Any]]:
+    """Get list of available workflows, migrating invalid filenames on first run."""
+    # Run migration once to fix any invalid workflow IDs
+    _migrate_invalid_workflow_files()
     workflows: list[dict[str, Any]] = []
     if not WORKFLOWS_DIR.exists():
         WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
@@ -79,14 +128,31 @@ def get_available_workflows() -> list[dict[str, Any]]:
             nodes = data.get("nodes")
             if isinstance(nodes, list):
                 # Graph Format
+
+                # Pre-scan: find which internal nodes are proxied by groups
+                proxied_node_ids: set[str] = set()
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    node_type = str(node.get("type", ""))
+                    if node_type != "GroupNode":
+                        continue
+                    properties = node.get("properties")
+                    if isinstance(properties, dict):
+                        proxy_widgets = properties.get("proxyWidgets")
+                        if isinstance(proxy_widgets, list):
+                            for proxy in proxy_widgets:
+                                if isinstance(proxy, list) and len(proxy) >= 1:
+                                    proxied_node_ids.add(str(proxy[0]))
+
                 for node in nodes:
                     if not isinstance(node, dict):
                         continue
                     node_id = str(node.get("id", ""))
                     node_type = str(node.get("type", "Unknown"))
                     node_title = str(node.get("title", node_type))
-                    
-                    # Discovery
+
+                    # Discovery: check proxyWidgets for LTX key mapping
                     properties = node.get("properties")
                     if isinstance(properties, dict):
                         proxy_widgets = properties.get("proxyWidgets")
@@ -101,8 +167,13 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                             "node": target_node_id,
                                             "field": target_widget_name
                                         }
-                    
+
                     # Extract all inputs for manual mapping
+                    # Skip internal nodes that are proxied by a group — their inputs
+                    # are exposed at the group level and would be duplicates
+                    if node_type != "GroupNode" and node_id in proxied_node_ids:
+                        continue
+
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name, field_value in inputs.items():
@@ -114,22 +185,26 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 label = node_title
                             else:
                                 label = f"{node_title} \u2192 {field_name}"
-                                
+
                             all_inputs.append({
                                 "id": f"{node_id}:{field_name}",
                                 "label": label,
                                 "node": node_id,
-                                "field": field_name
+                                "field": field_name,
+                                "node_title": node_title,
+                                "class_type": node_type
                             })
             else:
-                # API Format (flat dict keyed by node ID)
+                # API Format (flat dict keyed by node ID).
+                # API format flattens subgraphs — there's no group info.
+                # Use the node_title with field name for clarity in the mapping UI.
                 for node_id, node in data.items():
                     if not isinstance(node, dict):
                         continue
                     node_type = node.get("class_type", "Unknown")
                     meta = node.get("_meta", {})
                     node_title = meta.get("title", node_type)
-                    
+
                     inputs = node.get("inputs", {})
                     if isinstance(inputs, dict):
                         for field_name, field_value in inputs.items():
@@ -146,7 +221,9 @@ def get_available_workflows() -> list[dict[str, Any]]:
                                 "id": f"{node_id}:{field_name}",
                                 "label": label,
                                 "node": node_id,
-                                "field": field_name
+                                "field": field_name,
+                                "node_title": node_title,
+                                "class_type": node_type
                             })
 
             # 2. Layer on user manual overrides from config
@@ -239,15 +316,24 @@ def import_workflow(file_path: Path, original_filename: str | None = None, name:
         raise ValueError("File does not exist")
 
     base_filename = original_filename if original_filename else file_path.name
-    target_path = WORKFLOWS_DIR / base_filename
+    
+    # Sanitize filename to only allow safe characters for workflow IDs
+    stem = Path(base_filename).stem
+    suffix = Path(base_filename).suffix
+    # Replace any character that's not alphanumeric, underscore, or hyphen with underscore
+    safe_stem = re.sub(r"[^a-zA-Z0-9_-]", "_", stem)
+    # Remove consecutive underscores
+    safe_stem = re.sub(r"_+", "_", safe_stem)
+    # Remove leading/trailing underscores
+    safe_stem = safe_stem.strip("_")
+    
+    target_path = WORKFLOWS_DIR / f"{safe_stem}{suffix}"
 
     # Handle collision
     if target_path.exists():
-        stem = target_path.stem
-        suffix = target_path.suffix  # .json
         counter = 1
         while target_path.exists():
-            target_path = WORKFLOWS_DIR / f"{stem}_{counter}{suffix}"
+            target_path = WORKFLOWS_DIR / f"{safe_stem}_{counter}{suffix}"
             counter += 1
 
     # Copy file

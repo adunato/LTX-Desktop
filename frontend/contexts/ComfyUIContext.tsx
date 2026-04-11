@@ -12,7 +12,7 @@ export interface ComfyUIWorkflow {
   pipeline: string
   ui_mapping: Record<string, ProxyWidget>
   is_healthy: boolean
-  all_inputs: { id: string; label: string; node: string; field: string }[]
+  all_inputs: { id: string; label: string; node: string; field: string; node_title: string; class_type: string }[]
 }
 
 interface ComfyUIContextValue {
