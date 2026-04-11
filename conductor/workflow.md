@@ -8,16 +8,17 @@ This project uses specialized agents for each phase of the workflow. When execut
 |---|---|---|
 | **Task Selection & Test Design** (Steps 1-2) | **planner-agent** | `.qwen/agents/planner-agent.md` — Read `plan.md`, identify next task, design test cases |
 | **Write Failing Tests** (Step 3 — Red Phase) | **planner-agent** → **test-suite-executor** | planner-agent designs tests; test-suite-executor verifies test structure before implementation |
-| **Implement Code** (Steps 4-5 — Green/Refactor) | **go-implementer** or **python-tdd-implementer** | `.qwen/agents/go-implementer.md` or `.qwen/agents/python-tdd-implementer.md` — Route based on target file extension (`.go` → go-implementer, `.py` → python-tdd-implementer) |
-| **Verify Coverage** (Step 6) | **test-suite-executor** | `.qwen/agents/test-suite-executor.md` — Run coverage tools, verify >80% threshold |
+| **Implement Code** (Steps 4-5 — Green/Refactor) | **python-tdd-implementer** (backend) or **typescript-implementer** (frontend/Electron) | `.qwen/agents/python-tdd-implementer.md` for backend Python. `.qwen/agents/typescript-implementer.md` for frontend (React/TSX) and Electron (TS). |
+| **Verify Coverage & Types** (Step 6) | **test-suite-executor** | `.qwen/agents/test-suite-executor.md` — Run `pnpm backend:test`, `pnpm typecheck`, verify >80% backend coverage |
 | **Commit & Document** (Steps 8-11) | **phase-checkpoint-reviewer** | `.qwen/agents/phase-checkpoint-reviewer.md` — Verify commit message format, git notes, plan updates |
 | **Phase Checkpoint** (Phase Completion Protocol) | **test-suite-executor** → **phase-checkpoint-reviewer** | test-suite-executor runs full suite + creates missing tests; phase-checkpoint-reviewer generates manual verification plan and manages checkpoint commit |
 
 **Routing Decision Logic:**
-- If the task modifies **Go files** (`*.go`): use **go-implementer**
-- If the task modifies **Python files** (`*.py`): use **python-tdd-implementer**
-- If the task modifies **both**: sequence go-implementer first, then python-tdd-implementer (or vice versa based on dependency order)
-- All testing, coverage verification, and review steps use their respective agents regardless of language
+- If the task modifies **backend Python files** (`backend/**/*.py`): use **python-tdd-implementer**
+- If the task modifies **frontend TypeScript/TSX files** (`frontend/**/*.ts`, `frontend/**/*.tsx`): use **typescript-implementer** (follows React Context, Tailwind, component reuse priority conventions)
+- If the task modifies **Electron TypeScript files** (`electron/**/*.ts`): use **typescript-implementer** (follows IPC via preload, CommonJS preload script conventions)
+- If the task modifies **both layers**: sequence backend first (API contract), then frontend (consumer)
+- All testing, coverage verification, and review steps use their respective agents regardless of layer
 
 ---
 
@@ -140,14 +141,14 @@ All tasks follow a strict lifecycle:
 4.  **Determine if Human End-to-End Testing is Required:**
     -   **CRITICAL — DEFER UNTIL FINAL PHASE:** User manual / end-to-end verification **MUST NOT** be performed for intermediate phases of a multi-phase track. It is **only** permitted during the **final phase** of a track, unless the planner explicitly documents a justification for why earlier phases *cannot* be verified through automated tests alone.
     -   **For intermediate phases:** The agent MUST auto-approve this step and proceed directly to Step 6 (Create Checkpoint Commit). Inform the user: "This is an intermediate phase. User manual verification is deferred until the final phase per workflow policy. All changes are verified through automated tests. Auto-approving and proceeding to checkpoint."
-    -   **For the final phase only:** Analyze the completed phase to determine whether a human needs to manually run the application and verify behavior end-to-end through the TUI.
+    -   **For the final phase only:** Analyze the completed phase to determine whether a human needs to manually run the application and verify behavior end-to-end through the LTX Desktop app.
     -   **Human E2E Testing IS Required When (Final Phase Only):**
-        -   New or significantly altered user workflows in the running application (e.g., browsing stories, reading content, navigation flows)
+        -   New or significantly altered user workflows in the running application (e.g., video generation flows, project management, settings)
         -   Changes where automated tests cannot fully validate the user experience (e.g., layout feel, color readability, interaction smoothness)
         -   First integration of a major feature where the agent cannot verify correctness through unit/integration tests alone
     -   **Human E2E Testing is NOT Required (All Phases):**
         -   The feature is fully covered by automated tests (unit + integration) and the agent has verified all tests pass
-        -   Backend-only changes (data models, database schemas, utilities, Python scripts)
+        -   Backend-only changes (API endpoints, handlers, services, state management)
         -   Refactoring without behavioral changes
         -   Test-only additions
         -   Documentation updates
@@ -158,20 +159,20 @@ All tasks follow a strict lifecycle:
 5.  **Propose a Detailed, Actionable Manual Verification Plan (Human E2E Testing Required Only):**
     -   **CRITICAL:** To generate the plan, first analyze `product.md`, `product-guidelines.md`, and `plan.md` to determine the user-facing goals of the completed phase.
     -   **Before presenting the plan to the user, you MUST build the application:**
-        -   Run `go build -o le-browser.exe ./cmd/le-browser/` (or the appropriate build command for the platform).
-        -   Confirm the build succeeds and the executable is produced.
+        -   Run `pnpm build:frontend` to ensure the frontend builds successfully.
+        -   Run `pnpm typecheck` to verify no type errors exist.
         -   If the build fails, debug and fix before proceeding.
-    -   You **must** generate a step-by-step plan that walks the user through opening the built executable and verifying the completed work end-to-end, including specific expected outcomes.
+    -   You **must** generate a step-by-step plan that walks the user through running the app (`pnpm dev`) and verifying the completed work end-to-end, including specific expected outcomes.
     -   The plan you present to the user **must** follow this format:
 
-        **For a TUI/Application Change:**
+        **For a Frontend/Application Change:**
         ```
-        The automated tests have passed and the application has been built. For manual end-to-end verification, please follow these steps:
+        The automated tests have passed and the frontend has been built. For manual end-to-end verification, please follow these steps:
 
         **Manual Verification Steps:**
-        1.  **Open the built executable:** `le-browser.exe` (located in the project root directory).
-        2.  **Confirm that you see:** The new story browser view, with titles and categories displayed correctly.
-        3.  **Navigate to a story and confirm:** The content loads and displays as expected.
+        1.  **Start the app:** `pnpm dev`
+        2.  **Confirm that you see:** <expected visual behavior in the app>
+        3.  **Interact with <feature> and confirm:** <expected response>
         ```
 
         **For a Backend-Only Change (when human testing is still requested):**
@@ -179,9 +180,9 @@ All tasks follow a strict lifecycle:
         The automated tests have passed. For manual verification, please follow these steps:
 
         **Manual Verification Steps:**
-        1.  **Ensure the server is running.**
-        2.  **Execute the following command in your terminal:** `curl -X POST http://localhost:8080/api/v1/users -d '{"name": "test"}'`
-        3.  **Confirm that you receive:** A JSON response with a status of `201 Created`.
+        1.  **Start the dev environment:** `pnpm dev` (includes backend)
+        2.  **Trigger the endpoint via:** <method — UI action or API call>
+        3.  **Confirm that you receive:** <expected output/state change>
         ```
 
 6.  **Await Explicit User Feedback (Human E2E Testing Required Only):**
@@ -226,66 +227,72 @@ Before marking any task complete, verify:
 
 ### Setup
 ```bash
-# Install Go dependencies
-go mod tidy
+# One-time dev environment setup (auto-detects platform)
+pnpm setup:dev
 
-# Install Python dependencies
-pip install -r requirements.txt
+# Install Node.js dependencies
+pnpm install
 
-# Build the index (from the stories dataset)
-python scripts/build_index.py
+# Install Python dependencies (via uv)
+cd backend && uv sync
 ```
 
 ### Daily Development
 ```bash
-# Run the application
-go run cmd/le-browser/main.go
+# Run the full dev environment (Vite + Electron + Python backend)
+pnpm dev
 
-# Run Go tests
-go test ./...
+# Run with debug mode (Electron inspector + Python debugpy)
+pnpm dev:debug
 
-# Run Go tests with coverage
-go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
+# Run backend tests
+pnpm backend:test
 
-# Format Go code
-go fmt ./...
+# Run single test file
+pnpm backend:test -- tests/test_generation.py
 
-# Run Python scripts
-python scripts/<script_name>.py
+# Run type checks (both TypeScript and Python)
+pnpm typecheck
+
+# TypeScript only
+pnpm typecheck:ts
+
+# Python pyright only
+pnpm typecheck:py
 ```
 
 ### Before Committing
 ```bash
-# Format code
-go fmt ./...
+# Run all type checks
+pnpm typecheck
 
-# Run all tests
-go test ./...
+# Run all backend tests
+pnpm backend:test
 
-# Verify build
-go build ./cmd/le-browser/
+# Build frontend (if making UI changes)
+pnpm build:frontend
 ```
 
 ## Testing Requirements
 
-### Unit Testing
-- Every module must have corresponding tests.
-- Use appropriate test setup/teardown mechanisms (e.g., fixtures, beforeEach/afterEach).
-- Mock external dependencies.
-- Test both success and failure cases.
+### Backend Unit & Integration Testing
+- All backend modules must have corresponding integration tests using Starlette `TestClient`
+- No mocks — use fake service implementations via `ServiceBundle` only
+- Test both success and failure cases (HTTP errors with `from exc` chaining)
+- Fakes live in `backend/tests/fakes/`, wired via `conftest.py`
+- Test coverage target: >80% for all backend code
 
-### Integration Testing
-- Test complete user flows
-- Verify database transactions
-- Test authentication and authorization
-- Check form submissions
+### Frontend Testing
+- Note: No frontend tests currently exist in the project
+- When implementing frontend features, design test specifications following TDD methodology
+- Test component behavior, props contracts, and user interactions
+- Cover state changes via React Context and IPC interactions via `window.electronAPI`
 
-### Mobile Testing
-- Test on actual iPhone when possible
-- Use Safari developer tools
-- Test touch interactions
-- Verify responsive layouts
-- Check performance on 3G/4G
+### End-to-End Testing
+- Test complete video generation workflows (text-to-video, image-to-video, etc.)
+- Verify file I/O operations (project saves, video exports)
+- Test GPU fallback to API mode for unsupported hardware
+- Verify ffmpeg export pipeline
 
 ## Code Review Process
 
@@ -294,36 +301,36 @@ Before requesting review:
 
 1. **Functionality**
    - Feature works as specified
-   - Edge cases handled
+   - Edge cases handled (GPU unavailable, file not found, network errors)
    - Error messages are user-friendly
 
 2. **Code Quality**
-   - Follows style guide
+   - Backend: Routes are thin, handlers use lock correctly, services have Protocol + fake
+   - Frontend: Component reuse priority followed, no raw `fetch` for backend calls
+   - TypeScript: Strict mode, no `any`, no unused locals/parameters
+   - Python: Pyright strict mode, type annotations on all public APIs
    - DRY principle applied
    - Clear variable/function names
-   - Appropriate comments
 
 3. **Testing**
-   - Unit tests comprehensive
-   - Integration tests pass
-   - Coverage adequate (>80%)
+   - Backend: Integration tests pass with fakes (no mocks)
+   - Backend: Coverage adequate (>80%)
+   - Backend: `test_no_mock_usage.py` still passes
 
 4. **Security**
-   - No hardcoded secrets
+   - No hardcoded secrets or API keys
    - Input validation present
-   - SQL injection prevented
-   - XSS protection in place
+   - IPC surface is minimal and sandboxed
 
 5. **Performance**
-   - Database queries optimized
-   - Images optimized
-   - Caching implemented where needed
+   - GPU operations don't block the RLock
+   - Large video files handled efficiently
+   - Progress indicators for long-running operations
 
-6. **Mobile Experience**
-   - Touch targets adequate (44x44px)
-   - Text readable without zooming
-   - Performance acceptable on mobile
-   - Interactions feel native
+6. **Desktop Experience**
+   - Native file dialogs work correctly
+   - Video export via ffmpeg produces expected output
+   - App handles shutdown gracefully during generation
 
 ## Commit Guidelines
 
@@ -358,14 +365,15 @@ git commit -m "style(mobile): Improve button touch targets"
 A task is complete when:
 
 1. All code implemented to specification
-2. Unit tests written and passing
-3. Code coverage meets project requirements
-4. Documentation complete (if applicable)
-5. Code passes all configured linting and static analysis checks
-6. Works beautifully on mobile (if applicable)
-7. Implementation notes added to `plan.md`
+2. Backend tests written and passing (for backend changes)
+3. Test specifications designed (for frontend changes, until test infrastructure exists)
+4. Code coverage meets project requirements (>80% backend)
+5. `pnpm typecheck` passes (TypeScript + Python pyright)
+6. `pnpm backend:test` passes (for backend changes)
+7. `pnpm build:frontend` succeeds (for frontend changes)
 8. Changes committed with proper message
 9. Git note with task summary attached to the commit
+10. Implementation notes added to `plan.md`
 
 ## Emergency Procedures
 
@@ -394,22 +402,23 @@ A task is complete when:
 ## Deployment Workflow
 
 ### Pre-Deployment Checklist
-- [ ] All tests passing
-- [ ] Coverage >80%
-- [ ] No linting errors
-- [ ] Mobile testing complete
-- [ ] Environment variables configured
-- [ ] Database migrations ready
-- [ ] Backup created
+- [ ] All tests passing (`pnpm backend:test`)
+- [ ] Coverage >80% (backend)
+- [ ] No type errors (`pnpm typecheck`)
+- [ ] Frontend build succeeds (`pnpm build:frontend`)
+- [ ] Platform-specific builds tested (Windows/macOS/Linux)
+- [ ] GPU and API mode both verified
+- [ ] ffmpeg export tested on target platform
+- [ ] Auto-update mechanism verified
 
 ### Deployment Steps
 1. Merge feature branch to main
-2. Tag release with version
-3. Push to deployment service
-4. Run database migrations
-5. Verify deployment
-6. Test critical paths
-7. Monitor for errors
+2. Run `pnpm build` for target platform(s)
+3. Test installer on clean machine (or VM)
+4. Verify app launches and connects to backend
+5. Test video generation (local GPU or API mode)
+6. Publish release via electron-builder
+7. Monitor for crash reports and errors
 
 ### Post-Deployment
 1. Monitor analytics
